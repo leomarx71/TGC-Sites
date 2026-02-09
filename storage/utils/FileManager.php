@@ -37,7 +37,10 @@ class FileManager {
         }
     }
 
-    private static function readJson($filename) {
+    /**
+     * Lê um arquivo JSON e retorna array associativo
+     */
+    public static function readJson($filename) {
         self::init();
         $filepath = JSON_PATH . $filename;
 
@@ -61,7 +64,10 @@ class FileManager {
         return $data ?: [];
     }
 
-    private static function writeJson($filename, $data) {
+    /**
+     * Escreve array em arquivo JSON
+     */
+    public static function writeJson($filename, $data) {
         self::init();
         $filepath = JSON_PATH . $filename;
 
@@ -83,7 +89,10 @@ class FileManager {
         return true;
     }
 
-    public static function saveGranularDraw($tournamentId, $drawData) {
+    /**
+     * Salva o estado do sorteio e atualiza histórico
+     */
+    public static function saveGranularDraw($tournamentId, $drawData, $updatedUsedItems = null) {
         Logger::info("FileManager: Iniciando saveGranularDraw para ID $tournamentId");
         
         $stateFile = $tournamentId . '.json';
@@ -92,10 +101,16 @@ class FileManager {
         try {
             // 1. Processar Arquivo de Estado
             $currentState = self::readJson($stateFile);
-            $previousUsed = $currentState['usedItems'] ?? [];
-            $newItems = $drawData['drawnItems'] ?? [];
             
-            $updatedUsedItems = array_values(array_unique(array_merge($previousUsed, $newItems)));
+            // Se updatedUsedItems for passado (vindo do ProcessDraw), usa ele. 
+            // Caso contrário, calcula merge simples (comportamento legado para outros sorteios)
+            if ($updatedUsedItems !== null) {
+                $finalUsedItems = $updatedUsedItems;
+            } else {
+                $previousUsed = $currentState['usedItems'] ?? [];
+                $newItems = $drawData['drawnItems'] ?? [];
+                $finalUsedItems = array_values(array_unique(array_merge($previousUsed, $newItems)));
+            }
 
             $newState = [
                 'id' => $tournamentId,
@@ -103,10 +118,10 @@ class FileManager {
                 'lastUpdate' => date('Y-m-d H:i:s'),
                 'latestResult' => [
                     'phase' => $drawData['phase'],
-                    'drawnItems' => $newItems,
+                    'drawnItems' => $drawData['drawnItems'],
                     'date' => date('Y-m-d H:i:s')
                 ],
-                'usedItems' => $updatedUsedItems
+                'usedItems' => $finalUsedItems
             ];
 
             if (!self::writeJson($stateFile, $newState)) {

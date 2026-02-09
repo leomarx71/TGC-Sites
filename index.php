@@ -89,12 +89,10 @@ $nav_tabs = [
             box-shadow: 0 0 0 2px white, 0 0 5px rgba(0,0,0,0.5);
             filter: brightness(1.2);
         }
-        /* Ponteiro da roda mais preciso */
         .wheel-pointer i {
             filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5));
-            transform: scaleX(0.7); /* Deixa a seta mais fina */
+            transform: scaleX(0.7);
         }
-        /* Tabela responsiva */
         .table-auto th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
         .table-auto td { font-size: 0.85rem; }
     </style>
@@ -262,7 +260,6 @@ $nav_tabs = [
                     </div>
                     <div class="mb-6">
                         <label class="block text-sm font-bold text-slate-400 mb-2 uppercase tracking-wide">Lista de Torneios (Obrigatório)</label>
-                        <!-- Adicionado evento onchange para validação -->
                         <select id="forbidden-car-tournament-select" onchange="app.checkForbiddenButton()" class="w-full p-3 rounded-xl bg-slate-900 text-white border border-slate-700 focus:outline-none focus:border-red-500 transition-colors">
                             <option value="" disabled selected>Selecionar Torneio...</option>
                             <?php foreach($tg1_tournaments as $t): ?>
@@ -275,7 +272,6 @@ $nav_tabs = [
                             <div class="h-full min-h-[300px] p-6 bg-slate-900 rounded-xl border border-slate-700 flex flex-col justify-center items-center relative overflow-hidden group shadow-inner">
                                  <div id="forbidden-car-result-container" class="flex flex-col items-center justify-center w-full h-full">
                                     <div class="wheel-container relative w-64 h-64">
-                                        <!-- Ponteiro menor (w-6 h-8 ao invés de w-8 h-10) -->
                                         <div class="wheel-pointer absolute top-0 left-1/2 -translate-x-1/2 -translate-y-3 z-20 w-6 h-8 filter drop-shadow-md"><i class="fas fa-caret-down text-4xl text-white"></i></div>
                                         <div id="wheel-spinner" class="wheel w-full h-full rounded-full border-4 border-slate-600 shadow-2xl transition-transform duration-[3000ms] ease-[cubic-bezier(0.25,0.1,0.25,1)]"></div>
                                         <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 bg-slate-900 rounded-full border-4 border-slate-800 shadow-inner z-10"></div>
@@ -292,7 +288,6 @@ $nav_tabs = [
                                  <button onclick="app.toggleCarBan('Roxo')" id="ban-btn-Roxo" class="ban-toggle bg-purple-600 hover:bg-purple-500 text-white py-3 rounded-lg font-bold shadow text-xs uppercase transition-all flex items-center justify-center gap-2">Roxo</button>
                             </div>
                             <p id="ban-warning" class="text-xs text-red-400 text-center font-bold hidden">Manter pelo menos 2 cores!</p>
-                            <!-- Botão inicia desabilitado -->
                             <button onclick="app.drawForbiddenCar()" id="btn-draw-forbidden" disabled class="flex-grow bg-gradient-to-br from-red-600 to-red-700 text-white rounded-xl font-black text-2xl shadow-lg border-b-4 border-red-900 py-6 active:border-b-0 active:translate-y-1 transition-all mt-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:border-none disabled:active:translate-y-0 disabled:from-slate-600 disabled:to-slate-700"><i class="fa-solid fa-arrows-rotate mr-2"></i> GIRAR</button>
                         </div>
                     </div>
@@ -328,11 +323,11 @@ $nav_tabs = [
         };
 
         const SESSION_KEY = 'tgc_auth_token';
-        const SESSION_DURATION = 60 * 60 * 1000; // 60 minutos em ms
+        const SESSION_DURATION = 60 * 60 * 1000;
 
         let bannedColors = [];
         let selectedPhases = {}; 
-        let wheelSegments = []; // Armazena a ordem das cores na roda para sincronia
+        let wheelSegments = []; 
 
         const WHEEL_GRADIENTS = {
             'Vermelho': ['#ef4444', '#b91c1c'],
@@ -375,11 +370,8 @@ $nav_tabs = [
             const pass = document.getElementById('admin-pass').value;
             if(pass === 'admin' || pass === PHP_CONFIG.adminPass) { 
                 document.getElementById('login-modal').classList.add('opacity-0', 'pointer-events-none');
-                
-                // Salvar Sessão
                 const expiry = new Date().getTime() + SESSION_DURATION;
                 localStorage.setItem(SESSION_KEY, JSON.stringify({ expiry: expiry }));
-                
                 logSystem(`Login Admin OK`, "SUCCESS");
                 initSystem();
             } else {
@@ -395,9 +387,8 @@ $nav_tabs = [
                 try {
                     const data = JSON.parse(session);
                     if (new Date().getTime() < data.expiry) {
-                        // Sessão válida
-                        document.getElementById('login-modal').classList.add('hidden'); // Oculta imediatamente
-                        logSystem(`Sessão restaurada. Válida até: ${new Date(data.expiry).toLocaleTimeString()}`, "SUCCESS");
+                        document.getElementById('login-modal').classList.add('hidden');
+                        logSystem(`Sessão restaurada.`, "SUCCESS");
                         initSystem();
                         return true;
                     } else {
@@ -416,6 +407,7 @@ $nav_tabs = [
             const shuffled = [...array].sort(() => 0.5 - Math.random());
             return shuffled.slice(0, count);
         };
+
         const getRandomItem = (array) => {
              if(!array || array.length === 0) return { name: 'Erro' };
              return array[Math.floor(Math.random() * array.length)];
@@ -467,7 +459,6 @@ $nav_tabs = [
             selectedPhases[tournamentId] = phaseTitle;
         };
 
-        // --- CARREGAR HISTÓRICO GLOBAL ---
         const loadGlobalHistory = () => {
             const tbody = document.getElementById('global-history-table-body');
             tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Carregando...</td></tr>';
@@ -480,9 +471,7 @@ $nav_tabs = [
                         res.data.forEach(item => {
                             const tr = document.createElement('tr');
                             tr.className = 'hover:bg-gray-50 transition-colors';
-                            
                             let displayItems = item.items; 
-
                             tr.innerHTML = `
                                 <td class="px-6 py-3 whitespace-nowrap text-gray-700 font-mono text-xs align-top">${item.date_formatted}</td>
                                 <td class="px-6 py-3 text-gray-800 font-bold align-top">${item.tournament}</td>
@@ -502,6 +491,7 @@ $nav_tabs = [
                 });
         };
         
+        // --- FUNÇÃO HANDLER CENTRALIZADA PARA CLIENT-SIDE E SERVER-SIDE ---
         const handleDraw = (id, pool, count, itemType) => {
             const btn = document.getElementById(`btn-${id}`);
             const resultBox = document.getElementById(`result-${id}`);
@@ -515,42 +505,86 @@ $nav_tabs = [
                 btn.classList.add('opacity-75');
             }
 
-            setTimeout(() => {
-                const selectedItems = getRandomItems(pool, count);
-                resultBox.classList.remove('hidden');
-                resultBox.innerHTML = renderResultList(phase, selectedItems, itemType);
-                
+            // --- LÓGICA DE DECISÃO: SERVER-SIDE VS CLIENT-SIDE ---
+            if (id == 102 || id == 118) {
+                // Sorteio Server-Side (Regras complexas: Países, Stonehenge, Pote Cíclico)
                 const payload = {
                     tournamentId: id,
                     title: info.title,
-                    phase: phase,
-                    drawnItems: selectedItems
+                    phase: phase
                 };
 
-                fetch('api/SaveDraw.php', {
+                fetch('api/ProcessDraw.php', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify(payload)
                 })
                 .then(res => res.json())
                 .then(data => {
-                    if(data.status === 'success') {
-                        logSystem(`Sorteio #${id} salvo com sucesso.`, "SUCCESS");
-                        loadGlobalHistory();
+                    if (data.status === 'success') {
+                         resultBox.classList.remove('hidden');
+                         // Usa a fase retornada pela API que contém o contador correto (ex: Rodada 2)
+                         resultBox.innerHTML = renderResultList(data.phase || phase, data.data, itemType);
+                         logSystem(`Sorteio #${id} realizado e salvo (Server-Side).`, "SUCCESS");
+                         loadGlobalHistory();
+                         confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 } });
                     } else {
-                        logSystem(`Erro ao salvar sorteio #${id}: ${data.message}`, "ERROR");
+                         logSystem(`Erro no sorteio #${id}: ${data.message}`, "ERROR");
+                         alert("Erro ao processar sorteio: " + data.message);
                     }
                 })
-                .catch(err => logSystem(`Erro de conexão ao salvar #${id}`, "ERROR"));
+                .catch(err => {
+                    console.error(err);
+                    logSystem(`Erro de conexão #${id}`, "ERROR");
+                })
+                .finally(() => {
+                    if(btn) {
+                        const icon = btn.querySelector('i');
+                        if(icon) icon.classList.remove('fa-spin');
+                        btn.disabled = false;
+                        btn.classList.remove('opacity-75');
+                    }
+                });
 
-                if(btn) {
-                    const icon = btn.querySelector('i');
-                    if(icon) icon.classList.remove('fa-spin');
-                    btn.disabled = false;
-                    btn.classList.remove('opacity-75');
-                }
-                confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 } });
-            }, 800);
+            } else {
+                // Sorteio Client-Side (Legado/Simples) e Salva via API
+                setTimeout(() => {
+                    const selectedItems = getRandomItems(pool, count);
+                    resultBox.classList.remove('hidden');
+                    resultBox.innerHTML = renderResultList(phase, selectedItems, itemType);
+                    
+                    const payload = {
+                        tournamentId: id,
+                        title: info.title,
+                        phase: phase,
+                        drawnItems: selectedItems
+                    };
+
+                    fetch('api/SaveDraw.php', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(payload)
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if(data.status === 'success') {
+                            logSystem(`Sorteio #${id} salvo com sucesso.`, "SUCCESS");
+                            loadGlobalHistory();
+                        } else {
+                            logSystem(`Erro ao salvar sorteio #${id}: ${data.message}`, "ERROR");
+                        }
+                    })
+                    .catch(err => logSystem(`Erro de conexão ao salvar #${id}`, "ERROR"));
+
+                    if(btn) {
+                        const icon = btn.querySelector('i');
+                        if(icon) icon.classList.remove('fa-spin');
+                        btn.disabled = false;
+                        btn.classList.remove('opacity-75');
+                    }
+                    confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 } });
+                }, 800);
+            }
         };
 
         const drawTG1 = (id) => handleDraw(id, PHP_CONFIG.tracks, 12, "pista");
@@ -562,7 +596,7 @@ $nav_tabs = [
             const select = document.getElementById('forbidden-car-tournament-select');
             const btn = document.getElementById('btn-draw-forbidden');
             if (select && btn) {
-                btn.disabled = !select.value; // Desabilita se vazio
+                btn.disabled = !select.value;
             }
         };
 
@@ -572,13 +606,12 @@ $nav_tabs = [
              const validColors = ["Vermelho", "Azul", "Branco", "Roxo"].filter(c => !bannedColors.includes(c));
              if(validColors.length === 0) return;
              
-             wheelSegments = []; // Reinicia segmentos
+             wheelSegments = [];
              let segments = [];
-             // Cria 12 segmentos para a roda
              for(let i=0; i<12; i++) {
                  const color = validColors[i % validColors.length];
                  segments.push(color);
-                 wheelSegments.push(color); // Guarda a ordem para o cálculo de rotação
+                 wheelSegments.push(color);
              }
 
              let gradientStr = "conic-gradient(";
@@ -624,29 +657,19 @@ $nav_tabs = [
              if(btn) btn.disabled = true;
              textRes.classList.add('opacity-0');
              
-             // 1. Sorteia o carro (o resultado lógico)
              const eligible = PHP_CONFIG.cars.filter(c => c.banned && !bannedColors.includes(c.color_name));
              const pool = eligible.length > 0 ? eligible : PHP_CONFIG.cars.filter(c => c.banned);
              const car = getRandomItem(pool);
 
-             // 2. Calcula a rotação para cair na cor correta
-             // Encontra todos os índices (segmentos) que têm a cor do carro sorteado
              const matchingIndices = wheelSegments.map((c, i) => c === car.color_name ? i : -1).filter(i => i !== -1);
-             // Escolhe um segmento aleatório dessa cor para parar
              const targetIndex = matchingIndices[Math.floor(Math.random() * matchingIndices.length)];
              
-             // Cada segmento tem 30 graus. O centro do segmento i é (i * 30) + 15.
-             // Como a roda gira no sentido horário, para o segmento ir para o topo (0 graus ou 360),
-             // precisamos subtrair a posição dele de um total de voltas.
              const segmentCenter = (targetIndex * 30) + 15;
-             const jitter = Math.random() * 20 - 10; // +/- 10 graus de variação aleatória dentro do segmento
+             const jitter = Math.random() * 20 - 10;
              const finalAngle = segmentCenter + jitter;
              
-             // 5 voltas completas (1800) + rotação ajustada para parar no topo
-             // Ex: Se o alvo está em 90deg, giramos 360-90 = 270deg para ele chegar ao topo.
              const rotation = (360 * 5) - finalAngle; 
 
-             // Aplica a rotação
              wheel.style.transition = "transform 3s cubic-bezier(0.25, 0.1, 0.25, 1)";
              wheel.style.transform = `rotate(${rotation}deg)`;
 
@@ -656,12 +679,11 @@ $nav_tabs = [
                  textRes.className = `mt-6 font-black text-2xl uppercase tracking-widest bg-slate-800 px-4 py-2 rounded-lg border border-slate-700 transition-opacity duration-500 ${car.color_name === 'Vermelho' ? 'text-red-400' : (car.color_name === 'Azul' ? 'text-blue-400' : (car.color_name === 'Roxo' ? 'text-purple-400' : 'text-white'))}`;
                  logSystem(`Carro Proibido: ${car.name} (${selectedTournamentName})`, "WARNING");
 
-                 // SALVAR HISTÓRICO - ID 501
                  const payload = {
                     tournamentId: 501,
-                    title: selectedTournamentName, // Nome do torneio selecionado
-                    phase: 'Carro Proibido', // Fase hardcoded
-                    drawnItems: [car.name + " " + car.color_name] // Nome + Cor
+                    title: selectedTournamentName,
+                    phase: 'Carro Proibido',
+                    drawnItems: [car.name + " " + car.color_name]
                  };
 
                  fetch('api/SaveDraw.php', {
@@ -678,11 +700,9 @@ $nav_tabs = [
                  })
                  .catch(err => console.error(err));
 
-                 // Reinicia transição para permitir novo giro futuro (opcional resetar para mod 360)
                  setTimeout(() => {
                     wheel.style.transition = 'none';
                     wheel.style.transform = `rotate(${rotation % 360}deg)`;
-                    // Reabilita botão se torneio ainda selecionado
                     checkForbiddenButton();
                  }, 500);
                  
@@ -696,11 +716,10 @@ $nav_tabs = [
                 passInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') checkLogin(); });
             }
             renderForbiddenWheel();
-            checkForbiddenButton(); // Verifica estado inicial do botão
+            checkForbiddenButton();
             loadGlobalHistory(); 
         };
 
-        // Verifica sessão ao iniciar
         document.addEventListener('DOMContentLoaded', () => {
              checkSession();
         });

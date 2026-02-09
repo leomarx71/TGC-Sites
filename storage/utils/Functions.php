@@ -64,14 +64,21 @@ function render_button($id, $label, $onclick, $color = 'blue', $icon = null) {
 
 function render_tournament_card($id, $title, $subtitle, $action_function) {
     // Definição das Fases e Cores
-    $phases = [
-        ['label' => 'F0', 'title' => 'Eliminatórias',  'color' => 'bg-slate-800 hover:bg-slate-700', 'text' => 'text-white'], 
-        ['label' => 'F1', 'title' => 'F. de Grupos',   'color' => 'bg-blue-500 hover:bg-blue-400',   'text' => 'text-white'], 
-        ['label' => 'F2', 'title' => '8° de Final',    'color' => 'bg-green-600 hover:bg-green-500', 'text' => 'text-white'], 
-        ['label' => 'F3', 'title' => '4° de Final',    'color' => 'bg-yellow-400 hover:bg-yellow-300', 'text' => 'text-yellow-900'], 
-        ['label' => 'F4', 'title' => 'Semifinal',      'color' => 'bg-orange-500 hover:bg-orange-400', 'text' => 'text-white'], 
-        ['label' => 'F5', 'title' => 'Final e 3°',     'color' => 'bg-red-600 hover:bg-red-500',    'text' => 'text-white']  
-    ];
+    // Lógica condicional para Torneios 102 e 118 (Rodada única) vs Padrão
+    if ($id == 102 || $id == 118) {
+        $phases = [
+            ['label' => 'F6', 'title' => 'Rodada', 'color' => 'bg-purple-600 hover:bg-purple-500', 'text' => 'text-white']
+        ];
+    } else {
+        $phases = [
+            ['label' => 'F0', 'title' => 'Eliminatórias',  'color' => 'bg-slate-800 hover:bg-slate-700', 'text' => 'text-white'], 
+            ['label' => 'F1', 'title' => 'F. de Grupos',   'color' => 'bg-blue-500 hover:bg-blue-400',   'text' => 'text-white'], 
+            ['label' => 'F2', 'title' => '8° de Final',    'color' => 'bg-green-600 hover:bg-green-500', 'text' => 'text-white'], 
+            ['label' => 'F3', 'title' => '4° de Final',    'color' => 'bg-yellow-400 hover:bg-yellow-300', 'text' => 'text-yellow-900'], 
+            ['label' => 'F4', 'title' => 'Semifinal',      'color' => 'bg-orange-500 hover:bg-orange-400', 'text' => 'text-white'], 
+            ['label' => 'F5', 'title' => 'Final e 3°',     'color' => 'bg-red-600 hover:bg-red-500',    'text' => 'text-white']  
+        ];
+    }
 
     echo "
     <div class='bg-white p-4 rounded-lg shadow-md border-l-4 border-indigo-500 hover:shadow-lg transition-shadow relative'>
@@ -129,6 +136,7 @@ function render_section_header($title, $icon, $showLegend = false) {
                     <li class='flex items-center gap-2'><span class='w-6 text-center bg-yellow-400 text-yellow-900 rounded text-[10px] font-bold py-0.5'>F3</span> 4° de Final</li>
                     <li class='flex items-center gap-2'><span class='w-6 text-center bg-orange-500 rounded text-[10px] font-bold py-0.5'>F4</span> Semifinal</li>
                     <li class='flex items-center gap-2'><span class='w-6 text-center bg-red-600 rounded text-[10px] font-bold py-0.5'>F5</span> Final e 3°</li>
+                    <li class='flex items-center gap-2'><span class='w-6 text-center bg-purple-600 rounded text-[10px] font-bold py-0.5'>F6</span> Rodada</li>
                 </ul>
                 <div class='absolute -top-1 left-2 w-2 h-2 bg-slate-800 rotate-45 border-l border-t border-slate-700'></div>
             </div>

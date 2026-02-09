@@ -12,7 +12,6 @@
 # Arquivos de dados e logs (sensível)
 storage/backups
 storage/logs
-storage/json
 temp
 
 

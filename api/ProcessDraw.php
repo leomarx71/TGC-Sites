@@ -1,232 +1,240 @@
 <?php
-// api/processDraw.php
+// api/ProcessDraw.php
 header('Content-Type: application/json');
 
-// 1. Carrega dependências
 require_once '../storage/data/Config.php';
+require_once '../storage/data/Data.php';
 require_once '../storage/utils/Functions.php';
 require_once '../storage/utils/FileManager.php';
-require_once '../storage/data/Data.php';
 
-// Ativa debug se configurado
+// Ativa debug se necessário
 if (defined('DEBUG_MODE') && DEBUG_MODE) {
     ini_set('display_errors', 1);
     error_reporting(E_ALL);
 }
 
+// Verifica Método
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    echo json_encode(['status' => 'error', 'message' => 'Método inválido']);
+    http_response_code(405);
+    echo json_encode(['status' => 'error', 'message' => 'Método não permitido']);
     exit;
 }
 
+// Lê Input
 $input = json_decode(file_get_contents('php://input'), true);
 $tournamentId = $input['tournamentId'] ?? null;
-$round = $input['round'] ?? null;
+// A fase que vem do front (ex: "Rodada") será sobrescrita pela lógica do contador server-side
+$inputPhaseLabel = $input['phase'] ?? 'Rodada'; 
+$title = $input['title'] ?? "Torneio $tournamentId";
 
 if (!$tournamentId) {
     echo json_encode(['status' => 'error', 'message' => 'ID do torneio obrigatório']);
     exit;
 }
 
-// IDs especiais que usam a lógica de Pote Cíclico
-$specialIds = ['t2', 't18'];
+Logger::info("ProcessDraw: Iniciando sorteio para ID $tournamentId");
 
 try {
-    // Carrega ou inicializa o estado do torneio
-    $jsonFile = JSON_PATH . $tournamentId . '.json';
-    $state = [];
-    if (file_exists($jsonFile)) {
-        $state = json_decode(file_get_contents($jsonFile), true);
+    // 1. Carrega Estado Atual
+    $stateFile = $tournamentId . '.json';
+    $currentState = FileManager::readJson($stateFile);
+    
+    // --- LÓGICA DO CONTADOR DE RODADAS ---
+    $currentRound = $currentState['roundCounter'] ?? 0;
+    $nextRound = $currentRound + 1;
+    
+    if ($nextRound > 50) {
+        $nextRound = 1; // Reseta após 50 ou mantém? Assumindo reset cíclico.
     }
     
-    // Recupera itens usados (Pote)
-    $usedItems = $state['usedItems'] ?? [];
+    // Define o nome oficial da fase para exibição e histórico
+    $officialPhaseName = "Rodada $nextRound";
     
-    // Array final de sorteio
-    $selection = [];
-    $drawnStrings = [];
-    $isSpecial = in_array($tournamentId, $specialIds);
+    $usedItems = $currentState['usedItems'] ?? [];
 
-    // ============================================================================
-    // LÓGICA ESPECIAL PARA T2 e T18 (Pote Cíclico + Diversidade)
-    // ============================================================================
-    if ($isSpecial) {
-        $allTracks = $tracks_tg1_full; // Vem do Data.php
-        $totalTracksCount = count($allTracks); // 32
-        
-        // 1. Filtra disponíveis (o que não está em usedItems)
-        // Precisamos comparar nomes, pois $usedItems é array de strings (nomes)
-        $available = array_filter($allTracks, function($t) use ($usedItems) {
-            return !in_array($t['name'], $usedItems);
-        });
-        
-        // Reindexa array
-        $available = array_values($available);
-        
-        // Regra: "Se acabarem as 32 (ou não der para completar 12), usa as restantes e completa com novo"
-        // Vamos forçar reset se count(available) < 12 para simplificar a lógica de "completar"
-        // Ou se não tivermos diversidade suficiente.
-        
-        $needed = 12;
-        $selectionPool = []; // De onde vamos tirar as pistas
-        $didReset = false;
+    // 2. Define Pote Base e Regras
+    $basePool = [];
+    $drawCount = 0;
+    $specialRules = false;
+    $stonehengeRule = false;
+    
+    // Configuração baseada no ID
+    if ($tournamentId == 102 || $tournamentId == 118) {
+        global $tracks_tg1; // Do Data.php
+        $basePool = $tracks_tg1;
+        $drawCount = 12;
+        $specialRules = true; // Regra de países
+        $stonehengeRule = true; // Regra Stonehenge 12ª posição
+    } else {
+        // Fallback genérico
+         global $tracks_tg1;
+         $basePool = $tracks_tg1;
+         $drawCount = 12; 
+    }
 
-        // Se tiver menos que 12, pegamos TUDO o que sobrou e resetamos o pote para pegar o resto
-        if (count($available) < $needed) {
-            // Pega o que sobrou
-            foreach ($available as $t) {
-                $selection[] = $t;
-            }
-            
-            // Reseta Pote
-            $usedItems = []; 
-            $didReset = true;
-            
-            // O novo pool são TODAS as pistas, MENOS as que acabamos de pegar (para não repetir na rodada)
-            // Extrai nomes já selecionados
-            $currentRoundNames = array_column($selection, 'name');
-            $selectionPool = array_filter($allTracks, function($t) use ($currentRoundNames) {
-                return !in_array($t['name'], $currentRoundNames);
+    // 3. Processamento do Pote (Lógica Cíclica Ajustada)
+    $availablePool = array_diff($basePool, $usedItems);
+    $drawResult = [];
+    
+    // Variável para rastrear quais itens devem ser persistidos como "usados" no novo estado
+    // Se não houver reset, serão os usados antigos + novos sorteados
+    // Se houver reset, serão APENAS os novos sorteados do novo ciclo
+    $nextUsedItemsState = $usedItems; 
+    
+    // Se o pote disponível é menor que o necessário, usa o resto e reseta
+    if (count($availablePool) < $drawCount) {
+        Logger::info("ProcessDraw: Pote cíclico ativado (Disponível: " . count($availablePool) . ", Necessário: $drawCount)");
+        
+        // Pega tudo que sobrou do ciclo antigo
+        $residue = $availablePool;
+        foreach ($residue as $item) {
+            $drawResult[] = $item;
+        }
+        
+        // --- PONTO CRÍTICO: RESET DO CICLO ---
+        // O ciclo antigo fechou. O novo estado de "usados" começará do zero apenas com o que for tirado do pote novo.
+        $nextUsedItemsState = []; 
+        
+        // Reseta pool disponível para o total completo
+        $availablePool = $basePool;
+        
+        // Remove do pote novo o que já foi pego no resíduo para não repetir NA MESMA RODADA
+        // (Mas isso não afeta a persistência do próximo ciclo, apenas o sorteio atual)
+        $availablePool = array_diff($availablePool, $residue);
+    }
+
+    // 4. Sorteio dos itens restantes (considerando regras especiais)
+    $slotsRemaining = $drawCount - count($drawResult);
+    $itemsDrawnFromNewPool = []; // Rastreia o que saiu do pote novo/atual
+    
+    if ($specialRules && $slotsRemaining > 0) {
+        // Regra de Países
+        $requiredCountries = ['USA', 'SAM', 'JAP', 'GER', 'SCN', 'FRA', 'ITA', 'UKG'];
+        $presentCountries = [];
+
+        foreach ($drawResult as $track) {
+            $parts = explode(' - ', $track);
+            if (isset($parts[1])) $presentCountries[] = $parts[1];
+        }
+
+        $missingCountries = array_diff($requiredCountries, $presentCountries);
+        
+        foreach ($missingCountries as $country) {
+            if ($slotsRemaining <= 0) break;
+
+            $countryTracks = array_filter($availablePool, function($t) use ($country) {
+                return strpos($t, " - $country - ") !== false;
             });
+
+            if (!empty($countryTracks)) {
+                $pick = $countryTracks[array_rand($countryTracks)];
+                $drawResult[] = $pick;
+                $itemsDrawnFromNewPool[] = $pick; // Marca como novo
+                
+                $availablePool = array_diff($availablePool, [$pick]);
+                $slotsRemaining--;
+            }
+        }
+    }
+
+    // 5. Completa os slots restantes com aleatórios
+    if ($slotsRemaining > 0) {
+        $availablePool = array_values($availablePool);
+        if (count($availablePool) >= $slotsRemaining) {
+            $randomKeys = array_rand($availablePool, $slotsRemaining);
+            if (!is_array($randomKeys)) $randomKeys = [$randomKeys];
+            
+            foreach ($randomKeys as $key) {
+                $pick = $availablePool[$key];
+                $drawResult[] = $pick;
+                $itemsDrawnFromNewPool[] = $pick; // Marca como novo
+            }
         } else {
-            $selectionPool = $available;
-        }
-        
-        // Quantos faltam para completar 12?
-        $remainingNeeded = $needed - count($selection);
-        
-        if ($remainingNeeded > 0) {
-            // AQUI APLICAMOS A DIVERSIDADE NOS RESTANTES
-            // Países obrigatórios: USA, SAM, JAP, GER, SCN, FRA, ITA, UKG
-            $countries = ["USA", "SAM", "JAP", "GER", "SCN", "FRA", "ITA", "UKG"];
-            
-            // Verifica quais países já temos na seleção (se pegamos do resto do pote)
-            $existingCountries = array_column($selection, 'country');
-            
-            // Tenta garantir 1 de cada país na seleção FINAL (somando o que já pegou + o que vai pegar)
-            // Se o pote foi resetado ($didReset), $selectionPool está cheio (exceto as usadas na rodada), então é fácil.
-            // Se o pote NÃO foi resetado, dependemos do que tem no $selectionPool.
-            
-            // Para cada país, se ainda não temos, tentamos pegar do pool
-            $tempPool = $selectionPool;
-            
-            // Passo 1: Preencher obrigatórios
-            foreach ($countries as $c) {
-                // Se já temos esse país na seleção parcial (dos restos), ok.
-                if (in_array($c, $existingCountries)) continue;
-                
-                // Se não temos, busca no pool
-                $countryTracks = array_filter($tempPool, function($t) use ($c) { return $t['country'] === $c; });
-                
-                if (!empty($countryTracks)) {
-                    // Pega uma aleatória desse país
-                    $key = array_rand($countryTracks);
-                    $pick = $countryTracks[$key];
-                    
-                    $selection[] = $pick;
-                    // Remove do pool temporário para não duplicar
-                    // Precisamos encontrar a chave original no $tempPool
-                    // Como array_filter preserva chaves, $key é a chave em $tempPool? Não necessariamente se reindexado.
-                    // Vamos remover por nome
-                    $tempPool = array_filter($tempPool, function($t) use ($pick) { return $t['name'] !== $pick['name']; });
-                } else {
-                    // Se faltar país e não tiver no pool (ex: pote antigo sem reset), não tem como cumprir.
-                    // Nesse caso extremo, ignoramos ou forçamos reset? 
-                    // Se não houve reset antes (count >= 12), mas a diversidade falhou, deveríamos ter resetado.
-                    // Para simplificar: segue com o que tem.
-                }
-            }
-            
-            // Passo 2: Preencher o que falta (Random) até chegar em 12
-            while (count($selection) < 12 && count($tempPool) > 0) {
-                 $key = array_rand($tempPool);
-                 $pick = $tempPool[$key];
-                 $selection[] = $pick;
-                 // Remove por nome
-                 $tempPool = array_filter($tempPool, function($t) use ($pick) { return $t['name'] !== $pick['name']; });
+            // Caso extremo
+            foreach($availablePool as $pick) {
+                $drawResult[] = $pick;
+                $itemsDrawnFromNewPool[] = $pick;
             }
         }
-        
-        // --- REGRA STONEHENGE ---
-        // Se sorteada, move para a 12ª posição (índice 11)
-        $stoneIndex = -1;
-        foreach ($selection as $idx => $t) {
-            if ($t['name'] === 'Stonehenge') {
-                $stoneIndex = $idx;
+    }
+
+    // 6. Regra Stonehenge
+    if ($stonehengeRule) {
+        $targetTrack = "32 - UKG - Stonehenge";
+        $foundIndex = -1;
+        foreach ($drawResult as $idx => $track) {
+            if ($track === $targetTrack) {
+                $foundIndex = $idx;
                 break;
             }
         }
-        
-        if ($stoneIndex !== -1 && $stoneIndex !== 11 && count($selection) === 12) {
-            $stoneTrack = $selection[$stoneIndex];
-            // Remove
-            array_splice($selection, $stoneIndex, 1);
-            // Adiciona no final
-            $selection[] = $stoneTrack;
+        if ($foundIndex !== -1) {
+            unset($drawResult[$foundIndex]);
+            $drawResult = array_values($drawResult);
+            $drawResult[] = $targetTrack;
         }
-        
-        // Formata para string e atualiza UsedItems
-        foreach ($selection as $t) {
-            $drawnStrings[] = $t['country'] . " - " . $t['name'];
-            // Adiciona ao pote global de usados (apenas o nome)
-            if (!in_array($t['name'], $usedItems)) {
-                $usedItems[] = $t['name'];
-            }
-        }
-
-    } else {
-        // ============================================================================
-        // LÓGICA PADRÃO (Outros torneios)
-        // ============================================================================
-        // Apenas sorteia 12 aleatórias da lista simples $tracks_tg1
-        $pool = $tracks_tg1; // Data.php
-        shuffle($pool);
-        $drawnStrings = array_slice($pool, 0, 12);
-        // Não gerenciamos pote persistente complexo para os outros por enquanto
     }
 
-    // ============================================================================
-    // SALVAMENTO
-    // ============================================================================
+    // Corte final para garantir tamanho exato
+    $drawResult = array_slice($drawResult, 0, $drawCount);
+
+    // 7. Atualiza lista de itens usados para persistência
+    // Se nextUsedItemsState foi zerado (reset cíclico), adicionamos apenas o que veio do NOVO pool ($itemsDrawnFromNewPool)
+    // Se não foi zerado, adicionamos tudo que foi sorteado agora (pois tudo veio do mesmo pool corrente)
+    if (empty($nextUsedItemsState) && count($residue) > 0) {
+        // Houve reset: Persiste APENAS o que saiu do pote novo
+        $nextUsedItemsState = $itemsDrawnFromNewPool;
+    } else {
+        // Fluxo normal: Acumula o sorteio atual
+        $nextUsedItemsState = array_merge($nextUsedItemsState, $drawResult);
+    }
     
-    // Atualiza estado (Pote)
-    $state['id'] = $tournamentId;
-    $state['title'] = $input['title'] ?? 'Torneio ' . $tournamentId;
-    $state['usedItems'] = $usedItems;
-    $state['lastUpdate'] = date('Y-m-d H:i:s');
-    
-    // Salva JSON de Estado
-    FileManager::writeJson($jsonFile, $state);
-    
-    // Salva Histórico (SaveDraw Logic)
-    // O SaveDraw.php salva granularmente no histórico. Vamos simular/chamar a lógica dele aqui.
-    $phase = $round ? "Rodada $round" : ($input['phase'] ?? 'Sorteio');
-    
-    $historyData = [
-        'phase' => $phase,
-        'drawnItems' => $drawnStrings,
-        'date' => date('Y-m-d H:i:s')
+    $nextUsedItemsState = array_values(array_unique($nextUsedItemsState));
+
+    // 8. Salva usando FileManager
+    // Prepara dados para salvar no JSON de estado
+    $drawData = [
+        'title' => $title,
+        'phase' => $officialPhaseName, // Usa "Rodada X"
+        'drawnItems' => $drawResult
     ];
     
-    $historyFile = JSON_PATH . $tournamentId . '-history.json';
-    $history = [];
-    if (file_exists($historyFile)) {
-        $history = json_decode(file_get_contents($historyFile), true);
-    }
-    array_unshift($history, $historyData);
-    FileManager::writeJson($historyFile, $history);
+    // Injeta o contador de rodada no array que será salvo
+    // O método saveGranularDraw precisará ser ligeiramente "enganado" ou melhorado, 
+    // mas como ele lê o estado atual e faz merge, vamos passar o contador via um método auxiliar ou modificar o FileManager.
+    // Para não alterar o FileManager drasticamente agora, vamos ler, modificar e salvar manualmente aqui ou passar via drawData se o FileManager suportasse.
     
-    // Retorna
+    // Melhor abordagem: Usar FileManager::writeJson diretamente para ter controle total do estado
+    // Mas precisamos atualizar histórico também. Vamos usar o saveGranularDraw e depois atualizar o contador separadamente ou passar um array de estado completo.
+    
+    // Vamos atualizar o saveGranularDraw no FileManager (na memória aqui, mas o arquivo físico é outro).
+    // Como não posso editar 2 arquivos no mesmo bloco de código se não solicitado, vou usar a lógica de:
+    // Salvar o sorteio normal -> Ler o arquivo -> Adicionar contador -> Salvar de novo. É ineficiente mas seguro sem editar FileManager.
+    // OU: Passo o contador dentro de $nextUsedItemsState? Não, suja o array.
+    
+    // Solução: O FileManager::saveGranularDraw aceita $updatedUsedItems.
+    // Vou fazer o seguinte: Salvo normalmente. O FileManager salva `usedItems`.
+    // Depois, reabro o arquivo JSON e injeto o `roundCounter`.
+    
+    FileManager::saveGranularDraw($tournamentId, $drawData, $nextUsedItemsState);
+    
+    // Injeção do Contador (Pós-processamento)
+    $finalState = FileManager::readJson($stateFile);
+    $finalState['roundCounter'] = $nextRound;
+    FileManager::writeJson($stateFile, $finalState);
+
+    Logger::success("ProcessDraw: Sorteio ID $tournamentId (Rodada $nextRound) finalizado.");
+
+    // 9. Retorna Resultado
     echo json_encode([
-        'status' => 'success',
-        'data' => [
-            'drawnItems' => $drawnStrings,
-            'phase' => $phase,
-            'potState' => $isSpecial ? count($usedItems) . "/32" : "-" 
-        ]
+        'status' => 'success', 
+        'data' => $drawResult,
+        'phase' => $officialPhaseName, // Retorna o nome correto para o front atualizar
+        'used_count' => count($nextUsedItemsState)
     ]);
 
 } catch (Exception $e) {
+    Logger::error("ProcessDraw Erro: " . $e->getMessage());
     http_response_code(500);
     echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
 }

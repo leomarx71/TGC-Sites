@@ -19,19 +19,18 @@ try {
 
     if ($files) {
         foreach ($files as $file) {
-            // Extrai o ID do nome do arquivo (ex: 101-history.json -> 101)
             $filename = basename($file);
             $id = str_replace('-history.json', '', $filename);
             
             // Lê o histórico
             $fileContent = file_get_contents($file);
-            if (!$fileContent) continue; // Pula se vazio
+            if (!$fileContent) continue;
             
             $historyData = json_decode($fileContent, true);
             
-            // Tenta ler o arquivo de estado principal para pegar o Título atualizado
+            // Busca título do torneio
             $stateFile = $jsonPath . $id . '.json';
-            $tournamentTitle = "Torneio #$id"; // Fallback
+            $tournamentTitle = "Torneio #$id"; 
             
             if (file_exists($stateFile)) {
                 $stateContent = file_get_contents($stateFile);
@@ -45,37 +44,39 @@ try {
 
             if (is_array($historyData)) {
                 foreach ($historyData as $entry) {
-                    // Formata os itens sorteados
                     $itemsString = "Nenhum item";
                     if (isset($entry['drawnItems']) && is_array($entry['drawnItems'])) {
                         $itemsString = implode(', ', $entry['drawnItems']);
                     }
 
-                    // Define observação (Lógica para categorizar visualmente no front)
-                    $obs = "";
+                    $phase = $entry['phase'] ?? 'N/D';
+                    $obs = $entry['obs'] ?? ""; // Observação original se existir
                     
-                    if (strpos($id, '3') === 0) { 
-                        // IDs 300+ (Top Gear 3000)
+                    // Lógica de Observação Dinâmica
+                    if ($id == 102 || $id == 118) {
+                        // Se a fase contém "Rodada", destaca isso na observação também
+                        if (strpos($phase, 'Rodada') !== false) {
+                            $obs = strtoupper($phase); // Ex: "RODADA 5"
+                        } else {
+                            $obs = "Sorteio de Rodadas";
+                        }
+                    } elseif (strpos($id, '3') === 0) { 
                         $obs = "Sistema Planetário";
                     } elseif (strpos($id, '2') === 0) {
-                        // IDs 200+ (Top Gear 2)
-                        // Lógica específica: se tiver 2 itens, provavelmente é país + pista
                         if (count($entry['drawnItems'] ?? []) == 2) {
                             $obs = "Sorteio de Países";
                         }
                     } elseif ($id == '501') {
-                        // IDs 501 (Carros Proibidos)
-                        $obs = ""; // Observação vazia conforme solicitado
+                        $obs = ""; 
                     } elseif (strpos($id, '4') === 0) {
-                        // IDs 400+ (Cenários)
                         $obs = "Cenário Especial";
                     }
 
                     $globalHistory[] = [
-                        'date_raw' => $entry['date'] ?? '', // Para ordenação
+                        'date_raw' => $entry['date'] ?? '',
                         'date_formatted' => isset($entry['date']) ? date('d/m/Y H:i', strtotime($entry['date'])) : 'N/D',
                         'tournament' => $tournamentTitle,
-                        'phase' => $entry['phase'] ?? 'N/D',
+                        'phase' => $phase,
                         'items' => $itemsString,
                         'items_count' => isset($entry['drawnItems']) ? count($entry['drawnItems']) : 0,
                         'obs' => $obs
@@ -87,7 +88,6 @@ try {
 
     // Ordena por data (Mais recente primeiro)
     usort($globalHistory, function ($a, $b) {
-        // Garante que datas vazias fiquem no final
         if (empty($a['date_raw'])) return 1;
         if (empty($b['date_raw'])) return -1;
         return strtotime($b['date_raw']) - strtotime($a['date_raw']);
