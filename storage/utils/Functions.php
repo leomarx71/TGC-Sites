@@ -47,6 +47,7 @@ class Logger {
 // ... (Funções de renderização visual) ...
 
 function render_button($id, $label, $onclick, $color = 'blue', $icon = null) {
+    // Mantida para compatibilidade, mas o ideal é usar as constantes se for refatorar esta função também
     $colorClass = "bg-{$color}-600 hover:bg-{$color}-700";
     if ($color == 'red') $colorClass = "bg-red-600 hover:bg-red-700";
     if ($color == 'indigo') $colorClass = "bg-indigo-600 hover:bg-indigo-700";
@@ -70,39 +71,78 @@ function render_tournament_card($id, $title, $subtitle, $action_function) {
     // CASO 1: Torneios de Rodadas (102, 118 e 106)
     if ($id == 102 || $id == 118 || $id == 106) {
         $phases = [
-            ['title' => 'F6', 'label' => 'Rodada', 'color' => 'bg-purple-600 hover:bg-purple-500', 'text' => 'text-white']
+            ['title' => 'F6', 'label' => 'Rodada', 'color' => COLOR_F6_BG, 'text' => COLOR_F6_TXT]
         ];
     } 
     // CASO 2: Torneio 109 (Com 8° de Final)
     elseif ($id == 109) {
         $phases = [
-            ['title' => 'F0', 'label' => 'Eliminatórias',  'color' => 'bg-slate-800 hover:bg-slate-700', 'text' => 'text-white'],
-            ['title' => 'F2', 'label' => '8° de Final',    'color' => 'bg-green-600 hover:bg-green-500', 'text' => 'text-white'], 
-            ['title' => 'F3', 'label' => '4° de Final',    'color' => 'bg-yellow-400 hover:bg-yellow-300', 'text' => 'text-yellow-900'], 
-            ['title' => 'F4', 'label' => 'Semifinal',      'color' => 'bg-orange-500 hover:bg-orange-400', 'text' => 'text-white'], 
-            ['title' => 'F5', 'label' => 'Final e 3°',     'color' => 'bg-red-600 hover:bg-red-500',    'text' => 'text-white']
+            ['title' => 'F0', 'label' => 'Eliminatórias',  'color' => COLOR_F0_BG, 'text' => COLOR_F0_TXT],
+            ['title' => 'F2', 'label' => '8° de Final',    'color' => COLOR_F2_BG, 'text' => COLOR_F2_TXT], 
+            ['title' => 'F3', 'label' => '4° de Final',    'color' => COLOR_F3_BG, 'text' => COLOR_F3_TXT], 
+            ['title' => 'F4', 'label' => 'Semifinal',      'color' => COLOR_F4_BG, 'text' => COLOR_F4_TXT], 
+            ['title' => 'F5', 'label' => 'Final e 3°',     'color' => COLOR_F5_BG, 'text' => COLOR_F5_TXT]
         ];
     }
     // CASO 3: Torneio 117 (Sem 8° de Final)
     elseif ($id == 117) {
         $phases = [
-            ['title' => 'F0', 'label' => 'Eliminatórias',  'color' => 'bg-slate-800 hover:bg-slate-700', 'text' => 'text-white'],
+            ['title' => 'F0', 'label' => 'Eliminatórias',  'color' => COLOR_F0_BG, 'text' => COLOR_F0_TXT],
             // Pula F2 (8° de Final)
-            ['title' => 'F3', 'label' => '4° de Final',    'color' => 'bg-yellow-400 hover:bg-yellow-300', 'text' => 'text-yellow-900'], 
-            ['title' => 'F4', 'label' => 'Semifinal',      'color' => 'bg-orange-500 hover:bg-orange-400', 'text' => 'text-white'], 
-            ['title' => 'F5', 'label' => 'Final e 3°',     'color' => 'bg-red-600 hover:bg-red-500',    'text' => 'text-white']
+            ['title' => 'F3', 'label' => '4° de Final',    'color' => COLOR_F3_BG, 'text' => COLOR_F3_TXT], 
+            ['title' => 'F4', 'label' => 'Semifinal',      'color' => COLOR_F4_BG, 'text' => COLOR_F4_TXT], 
+            ['title' => 'F5', 'label' => 'Final e 3°',     'color' => COLOR_F5_BG, 'text' => COLOR_F5_TXT]
         ];
     }
-    // CASO 4: Padrão para os demais (Sem Eliminatórias, Com F1 e F2)
+    // CASO 4: La Liga (sem 8° de Final)
+    elseif (in_array($id, [103, 104, 105, 113, 114, 115])) {
+        $phases = [
+            ['title' => 'F1', 'label' => 'F. de Grupos',   'color' => COLOR_F1_BG, 'text' => COLOR_F1_TXT],
+            ['title' => 'F3', 'label' => '4° de Final',    'color' => COLOR_F3_BG, 'text' => COLOR_F3_TXT],
+            ['title' => 'F4', 'label' => 'Semifinal',      'color' => COLOR_F4_BG, 'text' => COLOR_F4_TXT],
+            ['title' => 'F5', 'label' => 'Final e 3°',     'color' => COLOR_F5_BG, 'text' => COLOR_F5_TXT]
+        ];
+    }
+    // CASO 5: Padrão para os demais (Sem Eliminatórias, Com F1 e F2)
     else {
         $phases = [
             // Pula F0
-            ['title' => 'F1', 'label' => 'F. de Grupos',   'color' => 'bg-blue-500 hover:bg-blue-400',   'text' => 'text-white'], 
-            ['title' => 'F2', 'label' => '8° de Final',    'color' => 'bg-green-600 hover:bg-green-500', 'text' => 'text-white'], 
-            ['title' => 'F3', 'label' => '4° de Final',    'color' => 'bg-yellow-400 hover:bg-yellow-300', 'text' => 'text-yellow-900'], 
-            ['title' => 'F4', 'label' => 'Semifinal',      'color' => 'bg-orange-500 hover:bg-orange-400', 'text' => 'text-white'], 
-            ['title' => 'F5', 'label' => 'Final e 3°',     'color' => 'bg-red-600 hover:bg-red-500',    'text' => 'text-white']  
+            ['title' => 'F1', 'label' => 'F. de Grupos',   'color' => COLOR_F1_BG, 'text' => COLOR_F1_TXT], 
+            ['title' => 'F2', 'label' => '8° de Final',    'color' => COLOR_F2_BG, 'text' => COLOR_F2_TXT], 
+            ['title' => 'F3', 'label' => '4° de Final',    'color' => COLOR_F3_BG, 'text' => COLOR_F3_TXT], 
+            ['title' => 'F4', 'label' => 'Semifinal',      'color' => COLOR_F4_BG, 'text' => COLOR_F4_TXT], 
+            ['title' => 'F5', 'label' => 'Final e 3°',     'color' => COLOR_F5_BG, 'text' => COLOR_F5_TXT]  
         ];
+    }
+
+    $actionButtonsHtml = "
+        <div class='mt-2'>
+            <button id='btn-{$id}' 
+                    onclick=\"app.{$action_function}({$id})\" 
+                    disabled
+                    class='w-full bg-gray-300 text-gray-500 cursor-not-allowed font-bold py-2 px-4 rounded shadow transition-all duration-200 flex items-center justify-center'>
+                <i class='fas fa-dice mr-2'></i> Sortear
+            </button>
+        </div>
+    ";
+
+    if ($id == 405) {
+        $actionButtonsHtml = "
+        <div class='mt-2 grid grid-cols-1 gap-2'>
+            <button id='btn-repeticoes-405'
+                    onclick=\"app.sortearRepeticoes405()\"
+                    disabled
+                    class='w-full bg-gray-300 text-gray-500 cursor-not-allowed font-bold py-2 px-4 rounded shadow transition-all duration-200 flex items-center justify-center'>
+                <i class='fas fa-hashtag mr-2'></i> Sortear Repetições
+            </button>
+            <button id='btn-pista-405'
+                    onclick=\"app.sortearPista405()\"
+                    disabled
+                    class='w-full bg-gray-300 text-gray-500 cursor-not-allowed font-bold py-2 px-4 rounded shadow transition-all duration-200 flex items-center justify-center'>
+                <i class='fas fa-road mr-2'></i> Sortear Pista
+            </button>
+        </div>
+        ";
     }
 
     echo "
@@ -132,14 +172,7 @@ function render_tournament_card($id, $title, $subtitle, $action_function) {
             <div id='selected-phase-display-{$id}' class='text-xs text-center font-bold mt-1 text-indigo-600 h-4'></div>
         </div>
 
-        <div class='mt-2'>
-            <button id='btn-{$id}' 
-                    onclick=\"app.{$action_function}({$id})\" 
-                    disabled
-                    class='w-full bg-gray-300 text-gray-500 cursor-not-allowed font-bold py-2 px-4 rounded shadow transition-all duration-200 flex items-center justify-center'>
-                <i class='fas fa-dice mr-2'></i> Sortear
-            </button>
-        </div>
+        {$actionButtonsHtml}
 
         <div id='result-{$id}' class='mt-3 p-2 bg-gray-50 rounded hidden text-sm border border-gray-200'></div>
     </div>
@@ -149,19 +182,29 @@ function render_tournament_card($id, $title, $subtitle, $action_function) {
 function render_section_header($title, $icon, $showLegend = false) {
     $legendHtml = "";
     if ($showLegend) {
+        $badges = [
+            'F0' => COLOR_F0_BADGE,
+            'F1' => COLOR_F1_BADGE,
+            'F2' => COLOR_F2_BADGE,
+            'F3' => COLOR_F3_BADGE,
+            'F4' => COLOR_F4_BADGE,
+            'F5' => COLOR_F5_BADGE,
+            'F6' => COLOR_F6_BADGE
+        ];
+
         $legendHtml = "
         <div class='group relative ml-2 inline-block'>
             <i class='fas fa-circle-question text-gray-400 hover:text-indigo-600 cursor-pointer text-lg transition-colors'></i>
             <div class='absolute left-0 top-full mt-2 hidden group-hover:block w-56 bg-slate-800 text-white text-xs rounded-lg p-3 z-50 shadow-xl border border-slate-700'>
                 <p class='font-bold border-b border-slate-600 pb-1 mb-2 text-indigo-400 uppercase tracking-wider'>Legenda de Fases</p>
                 <ul class='space-y-1.5'>
-                    <li class='flex items-center gap-2'><span class='w-6 text-center bg-slate-700 rounded text-[10px] font-bold py-0.5'>F0</span> Eliminatórias</li>
-                    <li class='flex items-center gap-2'><span class='w-6 text-center bg-blue-500 rounded text-[10px] font-bold py-0.5'>F1</span> F. de Grupos</li>
-                    <li class='flex items-center gap-2'><span class='w-6 text-center bg-green-600 rounded text-[10px] font-bold py-0.5'>F2</span> 8° de Final</li>
-                    <li class='flex items-center gap-2'><span class='w-6 text-center bg-yellow-400 text-yellow-900 rounded text-[10px] font-bold py-0.5'>F3</span> 4° de Final</li>
-                    <li class='flex items-center gap-2'><span class='w-6 text-center bg-orange-500 rounded text-[10px] font-bold py-0.5'>F4</span> Semifinal</li>
-                    <li class='flex items-center gap-2'><span class='w-6 text-center bg-red-600 rounded text-[10px] font-bold py-0.5'>F5</span> Final e 3°</li>
-                    <li class='flex items-center gap-2'><span class='w-6 text-center bg-purple-600 rounded text-[10px] font-bold py-0.5'>F6</span> Rodada</li>
+                    <li class='flex items-center gap-2'><span class='w-6 text-center {$badges['F0']} rounded text-[10px] font-bold py-0.5'>F0</span> Eliminatórias</li>
+                    <li class='flex items-center gap-2'><span class='w-6 text-center {$badges['F1']} rounded text-[10px] font-bold py-0.5'>F1</span> F. de Grupos</li>
+                    <li class='flex items-center gap-2'><span class='w-6 text-center {$badges['F2']} rounded text-[10px] font-bold py-0.5'>F2</span> 8° de Final</li>
+                    <li class='flex items-center gap-2'><span class='w-6 text-center {$badges['F3']} rounded text-[10px] font-bold py-0.5'>F3</span> 4° de Final</li>
+                    <li class='flex items-center gap-2'><span class='w-6 text-center {$badges['F4']} rounded text-[10px] font-bold py-0.5'>F4</span> Semifinal</li>
+                    <li class='flex items-center gap-2'><span class='w-6 text-center {$badges['F5']} rounded text-[10px] font-bold py-0.5'>F5</span> Final e 3°</li>
+                    <li class='flex items-center gap-2'><span class='w-6 text-center {$badges['F6']} rounded text-[10px] font-bold py-0.5'>F6</span> Rodada</li>
                 </ul>
                 <div class='absolute -top-1 left-2 w-2 h-2 bg-slate-800 rotate-45 border-l border-t border-slate-700'></div>
             </div>

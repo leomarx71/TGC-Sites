@@ -26,6 +26,20 @@ $tournamentId = $input['tournamentId'] ?? null;
 // A fase selecionada no botão (frontend)
 $inputPhaseLabel = $input['phase'] ?? 'Fase Desconhecida'; 
 $title = $input['title'] ?? "Torneio $tournamentId";
+$laLigaSixTournamentIds = [103, 104, 105, 113, 114, 115];
+$isLaLigaSix = in_array((int)$tournamentId, $laLigaSixTournamentIds, true);
+$isTg3000Tournament = ((int)$tournamentId === 301);
+$isTg3000CyclePhase = false;
+$isCenario401Tournament = ((int)$tournamentId === 401);
+$isCenario402Tournament = ((int)$tournamentId === 402);
+$isCenario403Tournament = ((int)$tournamentId === 403);
+$isCenario404Or406Tournament = in_array((int)$tournamentId, [404, 406], true);
+$usedItemsPotA = [];
+$usedItemsPotB = [];
+$usedItemsPotC = [];
+$usedItemsPot402 = [];
+$usedItemsPot403 = [];
+$usedItemsPotFull = [];
 
 if (!$tournamentId) {
     echo json_encode(['status' => 'error', 'message' => 'ID do torneio obrigatório']);
@@ -57,6 +71,9 @@ try {
         $phaseToSave = "Rodada $nextRound";
         $shouldUpdateRoundCounter = true;
     }
+    elseif ($isLaLigaSix && (stripos($inputPhaseLabel, 'F1') !== false || stripos($inputPhaseLabel, 'Grupos') !== false)) {
+        $phaseToSave = "Fase de Grupos";
+    }
 
     // 2. Define Pote Base e Regras
     $basePool = [];
@@ -66,6 +83,31 @@ try {
     $formatAsRounds = false; 
     $drawResult = []; // Inicializa array de resultado
     $customLogicApplied = false; // Flag para indicar se lógica customizada foi usada (ex: 110)
+    $allowCyclicPot = true;
+    $shouldTrackUsedItems = true;
+
+    // Regra nova para La Liga (103, 104, 105, 113, 114 e 115):
+    // o ciclo de usados é exclusivo para mata-mata (F3/F4/F5).
+    if ($isLaLigaSix) {
+        $usedItems = $currentState['usedItemsKnockout'] ?? [];
+    }
+    if ($isTg3000Tournament) {
+        $usedItems = $currentState['usedItemsTg3000Cycle'] ?? [];
+    }
+    if ($isCenario401Tournament) {
+        $usedItemsPotA = $currentState['usedItemsPotA'] ?? [];
+        $usedItemsPotB = $currentState['usedItemsPotB'] ?? [];
+        $usedItemsPotC = $currentState['usedItemsPotC'] ?? [];
+    }
+    if ($isCenario402Tournament) {
+        $usedItemsPot402 = $currentState['usedItemsPot402'] ?? [];
+    }
+    if ($isCenario403Tournament) {
+        $usedItemsPot403 = $currentState['usedItemsPot403'] ?? [];
+    }
+    if ($isCenario404Or406Tournament) {
+        $usedItemsPotFull = $currentState['usedItemsPotFull'] ?? [];
+    }
     
     // Configuração baseada no ID
     if ($tournamentId == 102 || $tournamentId == 118) {
@@ -192,11 +234,514 @@ try {
             $drawCount = 3; 
         }
     }
+    elseif ($tournamentId == 401) {
+        global $pot_cen1_a, $pot_cen1_b, $pot_cen1_c, $pot_cenarios_full;
+        $customLogicApplied = true;
+        $shouldTrackUsedItems = false;
+        $drawResult = [];
+        $normalizePot = function(array $pot) {
+            $keys = array_keys($pot);
+            $isIndexedList = true;
+            foreach ($keys as $k) {
+                if (!is_int($k)) {
+                    $isIndexedList = false;
+                    break;
+                }
+            }
+            return $isIndexedList ? array_values($pot) : array_values($keys);
+        };
+        $potAList = $normalizePot($pot_cen1_a);
+        $potBList = $normalizePot($pot_cen1_b);
+        $potCList = $normalizePot($pot_cen1_c);
+
+        if (
+            stripos($inputPhaseLabel, 'F1') === false &&
+            stripos($inputPhaseLabel, 'F2') === false &&
+            stripos($inputPhaseLabel, 'F3') === false &&
+            stripos($inputPhaseLabel, 'F4') === false &&
+            stripos($inputPhaseLabel, 'F5') === false &&
+            stripos($inputPhaseLabel, 'Grupos') === false &&
+            stripos($inputPhaseLabel, '8') === false &&
+            stripos($inputPhaseLabel, '4') === false &&
+            stripos($inputPhaseLabel, 'Semi') === false &&
+            stripos($inputPhaseLabel, 'Final') === false
+        ) {
+            throw new Exception('Fase não suportada para o torneio 401.');
+        }
+
+        $drawFromPotWithCycle = function(array $pot, array $used, int $count) {
+            $selected = [];
+            $usedState = array_values(array_unique($used));
+
+            for ($i = 0; $i < $count; $i++) {
+                $available = array_values(array_diff($pot, $usedState, $selected));
+
+                if (empty($available)) {
+                    // Reinicia ciclo do pote ao esgotar.
+                    $usedState = [];
+                    $available = array_values(array_diff($pot, $selected));
+                }
+
+                if (empty($available)) {
+                    break;
+                }
+
+                $pick = $available[array_rand($available)];
+                $selected[] = $pick;
+                $usedState[] = $pick;
+                $usedState = array_values(array_unique($usedState));
+            }
+
+            return [$selected, $usedState];
+        };
+
+        $getLapsForTrack = function($track, $primaryPot) use ($pot_cenarios_full) {
+            // Pote no formato mapa: pista => voltas
+            if (isset($primaryPot[$track]) && is_numeric($primaryPot[$track])) {
+                return (int)$primaryPot[$track];
+            }
+            // Fallback para mapa completo
+            if (isset($pot_cenarios_full[$track]) && is_numeric($pot_cenarios_full[$track])) {
+                return (int)$pot_cenarios_full[$track];
+            }
+            return 0;
+        };
+        $formatTrackWithLaps = function($track, $laps) {
+            $lapsText = ($laps === 1) ? '1 Volta' : ($laps . ' Voltas');
+            return $track . " <span class='ml-2 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded border border-amber-200 font-bold'>" . $lapsText . "</span>";
+        };
+
+        // Ordem fixa obrigatória: A, A, B, C.
+        [$selectedA, $usedItemsPotA] = $drawFromPotWithCycle($potAList, $usedItemsPotA, 2);
+        [$selectedB, $usedItemsPotB] = $drawFromPotWithCycle($potBList, $usedItemsPotB, 1);
+        [$selectedC, $usedItemsPotC] = $drawFromPotWithCycle($potCList, $usedItemsPotC, 1);
+
+        if (count($selectedA) < 2 || count($selectedB) < 1 || count($selectedC) < 1) {
+            throw new Exception('Não foi possível completar o sorteio do torneio 401 com os potes configurados.');
+        }
+
+        $drawResult = [
+            $formatTrackWithLaps($selectedA[0], $getLapsForTrack($selectedA[0], $pot_cen1_a)),
+            $formatTrackWithLaps($selectedA[1], $getLapsForTrack($selectedA[1], $pot_cen1_a)),
+            $formatTrackWithLaps($selectedB[0], $getLapsForTrack($selectedB[0], $pot_cen1_b)),
+            $formatTrackWithLaps($selectedC[0], $getLapsForTrack($selectedC[0], $pot_cen1_c))
+        ];
+    }
+    elseif ($tournamentId == 402) {
+        global $pot_cen402, $pot_cenarios_full;
+        $customLogicApplied = true;
+        $shouldTrackUsedItems = false;
+        $drawResult = [];
+
+        if (
+            stripos($inputPhaseLabel, 'F1') === false &&
+            stripos($inputPhaseLabel, 'F2') === false &&
+            stripos($inputPhaseLabel, 'F3') === false &&
+            stripos($inputPhaseLabel, 'F4') === false &&
+            stripos($inputPhaseLabel, 'F5') === false &&
+            stripos($inputPhaseLabel, 'Grupos') === false &&
+            stripos($inputPhaseLabel, '8') === false &&
+            stripos($inputPhaseLabel, '4') === false &&
+            stripos($inputPhaseLabel, 'Semi') === false &&
+            stripos($inputPhaseLabel, 'Final') === false
+        ) {
+            throw new Exception('Fase não suportada para o torneio 402.');
+        }
+
+        $pot402List = array_values(array_keys($pot_cen402));
+
+        $drawFromPotWithCycle = function(array $pot, array $used, int $count) {
+            $selected = [];
+            $usedState = array_values(array_unique($used));
+
+            for ($i = 0; $i < $count; $i++) {
+                $available = array_values(array_diff($pot, $usedState, $selected));
+
+                if (empty($available)) {
+                    // Reinicia ciclo ao esgotar o pote.
+                    $usedState = [];
+                    $available = array_values(array_diff($pot, $selected));
+                }
+
+                if (empty($available)) {
+                    break;
+                }
+
+                $pick = $available[array_rand($available)];
+                $selected[] = $pick;
+                $usedState[] = $pick;
+                $usedState = array_values(array_unique($usedState));
+            }
+
+            return [$selected, $usedState];
+        };
+
+        $getLapsForTrack = function($track) use ($pot_cen402, $pot_cenarios_full) {
+            if (isset($pot_cen402[$track]) && is_numeric($pot_cen402[$track])) {
+                return (int)$pot_cen402[$track];
+            }
+            if (isset($pot_cenarios_full[$track]) && is_numeric($pot_cenarios_full[$track])) {
+                return (int)$pot_cenarios_full[$track];
+            }
+            return 0;
+        };
+        $formatTrackWithLaps = function($track, $laps) {
+            $lapsText = ($laps === 1) ? '1 Volta' : ($laps . ' Voltas');
+            return $track . " <span class='ml-2 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded border border-amber-200 font-bold'>" . $lapsText . "</span>";
+        };
+
+        [$selected, $usedItemsPot402] = $drawFromPotWithCycle($pot402List, $usedItemsPot402, 6);
+        if (count($selected) < 6) {
+            throw new Exception('Não foi possível completar o sorteio do torneio 402 com o pote configurado.');
+        }
+
+        foreach ($selected as $track) {
+            $drawResult[] = $formatTrackWithLaps($track, $getLapsForTrack($track));
+        }
+    }
+    elseif ($tournamentId == 403) {
+        global $pot_cen402, $pot_cenarios_full;
+        $customLogicApplied = true;
+        $shouldTrackUsedItems = false;
+        $drawResult = [];
+
+        if (
+            stripos($inputPhaseLabel, 'F1') === false &&
+            stripos($inputPhaseLabel, 'F2') === false &&
+            stripos($inputPhaseLabel, 'F3') === false &&
+            stripos($inputPhaseLabel, 'F4') === false &&
+            stripos($inputPhaseLabel, 'F5') === false &&
+            stripos($inputPhaseLabel, 'Grupos') === false &&
+            stripos($inputPhaseLabel, '8') === false &&
+            stripos($inputPhaseLabel, '4') === false &&
+            stripos($inputPhaseLabel, 'Semi') === false &&
+            stripos($inputPhaseLabel, 'Final') === false
+        ) {
+            throw new Exception('Fase não suportada para o torneio 403.');
+        }
+
+        $pot403List = array_values(array_keys($pot_cen402));
+
+        $drawFromPotWithCycle = function(array $pot, array $used, int $count) {
+            $selected = [];
+            $usedState = array_values(array_unique($used));
+
+            for ($i = 0; $i < $count; $i++) {
+                $available = array_values(array_diff($pot, $usedState, $selected));
+
+                if (empty($available)) {
+                    // Reinicia ciclo ao esgotar o pote.
+                    $usedState = [];
+                    $available = array_values(array_diff($pot, $selected));
+                }
+
+                if (empty($available)) {
+                    break;
+                }
+
+                $pick = $available[array_rand($available)];
+                $selected[] = $pick;
+                $usedState[] = $pick;
+                $usedState = array_values(array_unique($usedState));
+            }
+
+            return [$selected, $usedState];
+        };
+
+        $getLapsForTrack = function($track) use ($pot_cen402, $pot_cenarios_full) {
+            if (isset($pot_cen402[$track]) && is_numeric($pot_cen402[$track])) {
+                return (int)$pot_cen402[$track];
+            }
+            if (isset($pot_cenarios_full[$track]) && is_numeric($pot_cenarios_full[$track])) {
+                return (int)$pot_cenarios_full[$track];
+            }
+            return 0;
+        };
+        $formatTrackWithLaps = function($track, $laps) {
+            $lapsText = ($laps === 1) ? '1 Volta' : ($laps . ' Voltas');
+            return $track . " <span class='ml-2 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded border border-amber-200 font-bold'>" . $lapsText . "</span>";
+        };
+
+        [$selected, $usedItemsPot403] = $drawFromPotWithCycle($pot403List, $usedItemsPot403, 4);
+        if (count($selected) < 4) {
+            throw new Exception('Não foi possível completar o sorteio do torneio 403 com o pote configurado.');
+        }
+
+        foreach ($selected as $track) {
+            $drawResult[] = $formatTrackWithLaps($track, $getLapsForTrack($track));
+        }
+    }
+    elseif ($isCenario404Or406Tournament) {
+        global $pot_cenarios_full;
+        $customLogicApplied = true;
+        $shouldTrackUsedItems = false;
+        $drawResult = [];
+
+        if (
+            stripos($inputPhaseLabel, 'F1') === false &&
+            stripos($inputPhaseLabel, 'F2') === false &&
+            stripos($inputPhaseLabel, 'F3') === false &&
+            stripos($inputPhaseLabel, 'F4') === false &&
+            stripos($inputPhaseLabel, 'F5') === false &&
+            stripos($inputPhaseLabel, 'Grupos') === false &&
+            stripos($inputPhaseLabel, '8') === false &&
+            stripos($inputPhaseLabel, '4') === false &&
+            stripos($inputPhaseLabel, 'Semi') === false &&
+            stripos($inputPhaseLabel, 'Final') === false
+        ) {
+            throw new Exception('Fase não suportada para este torneio de cenário.');
+        }
+
+        $potFullList = array_values(array_keys($pot_cenarios_full));
+
+        $drawFromPotWithCycle = function(array $pot, array $used, int $count) {
+            $selected = [];
+            $usedState = array_values(array_unique($used));
+
+            for ($i = 0; $i < $count; $i++) {
+                $available = array_values(array_diff($pot, $usedState, $selected));
+
+                if (empty($available)) {
+                    // Reinicia ciclo ao esgotar o pote.
+                    $usedState = [];
+                    $available = array_values(array_diff($pot, $selected));
+                }
+
+                if (empty($available)) {
+                    break;
+                }
+
+                $pick = $available[array_rand($available)];
+                $selected[] = $pick;
+                $usedState[] = $pick;
+                $usedState = array_values(array_unique($usedState));
+            }
+
+            return [$selected, $usedState];
+        };
+
+        [$selected, $usedItemsPotFull] = $drawFromPotWithCycle($potFullList, $usedItemsPotFull, 4);
+        if (count($selected) < 4) {
+            throw new Exception('Não foi possível completar o sorteio deste torneio de cenário.');
+        }
+
+        $drawResult = $selected;
+    }
     else {
         // Fallback genérico
          global $tracks_tg1;
          $basePool = $tracks_tg1;
          $drawCount = 12; 
+    }
+
+    if ($isTg3000Tournament) {
+        global $tg3k_4planet_systems, $tg3k_all_systems;
+        $specialRules = false;
+        $stonehengeRule = false;
+        $formatAsRounds = false;
+
+        if (stripos($inputPhaseLabel, 'F1') !== false || stripos($inputPhaseLabel, 'Grupos') !== false) {
+            // F1 independente, sem pote cíclico.
+            $basePool = $tg3k_4planet_systems;
+            $drawCount = 2;
+            $allowCyclicPot = false;
+            $shouldTrackUsedItems = false;
+            $usedItems = [];
+        }
+        elseif (stripos($inputPhaseLabel, 'F2') !== false || stripos($inputPhaseLabel, '8') !== false) {
+            $basePool = $tg3k_all_systems;
+            $drawCount = 3;
+            $allowCyclicPot = true;
+            $shouldTrackUsedItems = true;
+            $isTg3000CyclePhase = true;
+        }
+        elseif (stripos($inputPhaseLabel, 'F3') !== false || stripos($inputPhaseLabel, '4') !== false) {
+            $basePool = $tg3k_all_systems;
+            $drawCount = 3;
+            $allowCyclicPot = true;
+            $shouldTrackUsedItems = true;
+            $isTg3000CyclePhase = true;
+        }
+        elseif (stripos($inputPhaseLabel, 'F4') !== false || stripos($inputPhaseLabel, 'Semi') !== false) {
+            $basePool = $tg3k_all_systems;
+            $drawCount = 3;
+            $allowCyclicPot = true;
+            $shouldTrackUsedItems = true;
+            $isTg3000CyclePhase = true;
+        }
+        elseif (stripos($inputPhaseLabel, 'F5') !== false || stripos($inputPhaseLabel, 'Final') !== false) {
+            $basePool = $tg3k_all_systems;
+            $drawCount = 4;
+            $allowCyclicPot = true;
+            $shouldTrackUsedItems = true;
+            $isTg3000CyclePhase = true;
+        }
+        else {
+            throw new Exception('Fase não suportada para o TG3000.');
+        }
+    }
+
+    if ($isLaLigaSix) {
+        global $tracks_tg1;
+        $basePool = $tracks_tg1;
+        $specialRules = true;
+        $stonehengeRule = true;
+
+        if (stripos($inputPhaseLabel, 'F1') !== false || stripos($inputPhaseLabel, 'Grupos') !== false) {
+            // Fase de grupos: processa as 9 rodadas no backend com balanceamento estatístico.
+            $customLogicApplied = true;
+            $shouldTrackUsedItems = false;
+            $drawResult = [];
+            $requiredCountries = ['USA', 'SAM', 'JAP', 'GER', 'SCN', 'FRA', 'ITA', 'UKG'];
+            $targetTrack = "32 - UKG - Stonehenge";
+            $maxAppearancesPerTrack = 3; // 90 seleções / 32 pistas => alvo ~2-3
+            $usageMap = [];
+            foreach ($basePool as $track) {
+                $usageMap[$track] = 0;
+            }
+
+            // Índice por país para facilitar seleção balanceada.
+            $tracksByCountry = [];
+            foreach ($requiredCountries as $country) {
+                $tracksByCountry[$country] = array_values(array_filter($basePool, function($t) use ($country) {
+                    return strpos($t, " - $country - ") !== false;
+                }));
+            }
+
+            $prevRoundTracks = [];
+            $pickBalancedTrack = function(array $candidates, array $usageMap, array $prevRoundTracks, bool $preferNotPrevRound = true) {
+                if (empty($candidates)) {
+                    return null;
+                }
+
+                if ($preferNotPrevRound) {
+                    $notPrev = array_values(array_filter($candidates, function($t) use ($prevRoundTracks) {
+                        return !in_array($t, $prevRoundTracks, true);
+                    }));
+                    if (!empty($notPrev)) {
+                        $candidates = $notPrev;
+                    }
+                }
+
+                // Peso por uso: menos usadas têm chance muito maior.
+                $weights = [];
+                $totalWeight = 0;
+                foreach ($candidates as $track) {
+                    $u = $usageMap[$track] ?? 0;
+                    if ($u <= 0) {
+                        $weight = 120;
+                    } elseif ($u === 1) {
+                        $weight = 40;
+                    } elseif ($u === 2) {
+                        $weight = 12;
+                    } else {
+                        $weight = 2;
+                    }
+
+                    // Penaliza repetição na rodada imediatamente anterior.
+                    if (in_array($track, $prevRoundTracks, true)) {
+                        $weight = max(1, (int)floor($weight * 0.2));
+                    }
+
+                    $weights[] = $weight;
+                    $totalWeight += $weight;
+                }
+
+                if ($totalWeight <= 0) {
+                    return $candidates[array_rand($candidates)];
+                }
+
+                $roll = mt_rand(1, $totalWeight);
+                $acc = 0;
+                foreach ($candidates as $idx => $track) {
+                    $acc += $weights[$idx];
+                    if ($roll <= $acc) {
+                        return $track;
+                    }
+                }
+
+                return $candidates[array_rand($candidates)];
+            };
+
+            for ($round = 1; $round <= 9; $round++) {
+                $roundDraw = [];
+
+                // 1) Garante 1 pista por país, priorizando menos usadas e não repetidas da rodada anterior.
+                foreach ($requiredCountries as $country) {
+                    $countryPool = $tracksByCountry[$country] ?? [];
+                    $countryCandidates = array_values(array_filter($countryPool, function($t) use ($usageMap, $maxAppearancesPerTrack, $roundDraw) {
+                        return ($usageMap[$t] ?? 0) < $maxAppearancesPerTrack && !in_array($t, $roundDraw, true);
+                    }));
+
+                    if (empty($countryCandidates)) {
+                        $countryCandidates = array_values(array_filter($countryPool, function($t) use ($roundDraw) {
+                            return !in_array($t, $roundDraw, true);
+                        }));
+                    }
+
+                    $pick = $pickBalancedTrack($countryCandidates, $usageMap, $prevRoundTracks, true);
+                    if ($pick !== null) {
+                        $roundDraw[] = $pick;
+                        $usageMap[$pick] = ($usageMap[$pick] ?? 0) + 1;
+                    }
+                }
+
+                // 2) Completa até 10 com o mesmo critério de balanceamento global.
+                while (count($roundDraw) < 10) {
+                    $globalCandidates = array_values(array_filter($basePool, function($t) use ($usageMap, $maxAppearancesPerTrack, $roundDraw) {
+                        return ($usageMap[$t] ?? 0) < $maxAppearancesPerTrack && !in_array($t, $roundDraw, true);
+                    }));
+
+                    if (empty($globalCandidates)) {
+                        $globalCandidates = array_values(array_filter($basePool, function($t) use ($roundDraw) {
+                            return !in_array($t, $roundDraw, true);
+                        }));
+                    }
+
+                    if (empty($globalCandidates)) {
+                        break;
+                    }
+
+                    $pick = $pickBalancedTrack($globalCandidates, $usageMap, $prevRoundTracks, true);
+                    if ($pick === null) {
+                        break;
+                    }
+
+                    $roundDraw[] = $pick;
+                    $usageMap[$pick] = ($usageMap[$pick] ?? 0) + 1;
+                }
+
+                // Stonehenge sempre por último, se sorteada.
+                $foundIndex = -1;
+                foreach ($roundDraw as $idx => $track) {
+                    if ($track === $targetTrack) {
+                        $foundIndex = $idx;
+                        break;
+                    }
+                }
+                if ($foundIndex !== -1) {
+                    unset($roundDraw[$foundIndex]);
+                    $roundDraw = array_values($roundDraw);
+                    $roundDraw[] = $targetTrack;
+                }
+
+                $roundDraw = array_slice($roundDraw, 0, 10);
+                $drawResult[] = "Rodada $round - " . implode(', ', $roundDraw);
+                $prevRoundTracks = $roundDraw;
+            }
+        }
+        elseif (stripos($inputPhaseLabel, 'F3') !== false || stripos($inputPhaseLabel, '4') !== false) {
+            $drawCount = 12;
+        }
+        elseif (stripos($inputPhaseLabel, 'F4') !== false || stripos($inputPhaseLabel, 'Semi') !== false) {
+            $drawCount = 12;
+        }
+        elseif (stripos($inputPhaseLabel, 'F5') !== false || stripos($inputPhaseLabel, 'Final') !== false) {
+            $drawCount = 16;
+        }
+        else {
+            throw new Exception('Fase não suportada para este torneio. Use Fase de Grupos, 4° de Final, Semifinal ou Final e 3°.');
+        }
     }
 
     // --- LÓGICA DE SORTEIO PADRÃO (Se não foi customizada acima) ---
@@ -207,7 +752,7 @@ try {
         $availablePool = array_diff($basePool, $usedItems);
         
         // Lógica Cíclica
-        if (count($availablePool) < $drawCount) {
+        if ($allowCyclicPot && count($availablePool) < $drawCount) {
             Logger::info("ProcessDraw: Pote cíclico ativado");
             $residue = $availablePool;
             foreach ($residue as $item) {
@@ -286,12 +831,18 @@ try {
         $drawResult = array_slice($drawResult, 0, $drawCount);
 
         // Atualiza Estado de Usados
-        if (empty($nextUsedItemsState) && count($residue) > 0) {
-            $nextUsedItemsState = $itemsDrawnFromNewPool;
+        if ($shouldTrackUsedItems) {
+            if (empty($nextUsedItemsState) && count($residue) > 0) {
+                $nextUsedItemsState = $itemsDrawnFromNewPool;
+            } else {
+                $nextUsedItemsState = array_merge($nextUsedItemsState, $drawResult);
+            }
+            $nextUsedItemsState = array_values(array_unique($nextUsedItemsState));
+        } elseif ($isTg3000Tournament && !$isTg3000CyclePhase) {
+            $nextUsedItemsState = $currentState['usedItemsTg3000Cycle'] ?? ($currentState['usedItems'] ?? []);
         } else {
-            $nextUsedItemsState = array_merge($nextUsedItemsState, $drawResult);
+            $nextUsedItemsState = $currentState['usedItemsKnockout'] ?? ($currentState['usedItems'] ?? []);
         }
-        $nextUsedItemsState = array_values(array_unique($nextUsedItemsState));
     } 
     else {
         // Lógica customizada (110 e 117-F5) não persiste ciclo de usados da mesma forma
@@ -319,6 +870,43 @@ try {
     if ($shouldUpdateRoundCounter) {
         $finalState = FileManager::readJson($stateFile);
         $finalState['roundCounter'] = $nextRound;
+        FileManager::writeJson($stateFile, $finalState);
+    }
+
+    if ($isLaLigaSix) {
+        $finalState = FileManager::readJson($stateFile);
+        $finalState['usedItemsKnockout'] = $nextUsedItemsState;
+        FileManager::writeJson($stateFile, $finalState);
+    }
+
+    if ($isTg3000Tournament && $isTg3000CyclePhase) {
+        $finalState = FileManager::readJson($stateFile);
+        $finalState['usedItemsTg3000Cycle'] = $nextUsedItemsState;
+        FileManager::writeJson($stateFile, $finalState);
+    }
+
+    if ($isCenario401Tournament) {
+        $finalState = FileManager::readJson($stateFile);
+        $finalState['usedItemsPotA'] = $usedItemsPotA;
+        $finalState['usedItemsPotB'] = $usedItemsPotB;
+        $finalState['usedItemsPotC'] = $usedItemsPotC;
+        FileManager::writeJson($stateFile, $finalState);
+    }
+
+    if ($isCenario402Tournament) {
+        $finalState = FileManager::readJson($stateFile);
+        $finalState['usedItemsPot402'] = $usedItemsPot402;
+        FileManager::writeJson($stateFile, $finalState);
+    }
+    if ($isCenario403Tournament) {
+        $finalState = FileManager::readJson($stateFile);
+        $finalState['usedItemsPot403'] = $usedItemsPot403;
+        FileManager::writeJson($stateFile, $finalState);
+    }
+
+    if ($isCenario404Or406Tournament) {
+        $finalState = FileManager::readJson($stateFile);
+        $finalState['usedItemsPotFull'] = $usedItemsPotFull;
         FileManager::writeJson($stateFile, $finalState);
     }
 

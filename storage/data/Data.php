@@ -103,10 +103,132 @@ $tg3k_4planet_systems = ["Zosmar", "Sarin", "Alderam", "Lesath", "Miram", "Subra
 // ============================================================================
 
 // Potes Cenário 1
-$pot_cen1_a = ["06 SAM - Machu Picchu", "14 GER - Cologne", "17 SCN - Stockholm", "19 SCN - Helsinki", "21 FRA - Paris", "25 ITA - Pisa", "31 UKG - Loch Ness", "32 UKG - Stonehenge"];
-$pot_cen1_b = ["23 FRA - Bordeaux", "01 USA - Las Vegas", "10 JAP - Hiroshima", "04 USA - San Francisco", "05 SAM - Rio", "12 JAP - Kyoto"];
+$pot_cenarios_full = [
+    '01 - USA - Las Vegas' => 6,
+    '02 - USA - Los Angeles' => 3,
+    '03 - USA - New York' => 3,
+    '04 - USA - San Francisco' => 7,
+    '05 - SAM - Rio de Janeiro' => 7,
+    '06 - SAM - Machu Pichu' => 1,
+    '07 - SAM - Chichén Itzá' => 8,
+    '08 - SAM - Floresta A' => 3,
+    '09 - JAP - Tóquio' => 9,
+    '10 - JAP - Hiroshima' => 6,
+    '11 - JAP - Yokohama' => 3,
+    '12 - JAP - Quioto' => 7,
+    '13 - GER - Munique' => 9,
+    '14 - GER - Cologne' => 1,
+    '15 - GER - Black Forest' => 10,
+    '16 - GER - Frankfurt' => 10,
+    '17 - SCN - StockHolm' => 1,
+    '18 - SCN - Copen' => 3,
+    '19 - SCN - Helsinque' => 1,
+    '20 - SCN - Oslo' => 3,
+    '21 - FRA - Paris' => 1,
+    '22 - FRA - Nice' => 10,
+    '23 - FRA - Bordeaux' => 4,
+    '24 - FRA - Monaco' => 3,
+    '25 - ITA - Pisa' => 1,
+    '26 - ITA - Roma' => 10,
+    '27 - ITA - Sicília' => 3,
+    '28 - ITA - Florença' => 3,
+    '29 - UKG - Londres' => 10,
+    '30 - UKG - Sheffield' => 3,
+    '31 - UKG - Loch Ness' => 1,
+    '32 - UKG - Stonehenge' => 3
+];
 
-$pot_cen1_c = ["07 SAM - Chichen Itza", "09 JAP - Tokyo", "13 GER - Munich", "15 GER - Black Forest", "16 GER - Frankfurt", "22 FRA - Nice", "26 ITA - Rome", "29 UKG - London"];
+$pot_cen1_a = [
+    '06 - SAM - Machu Pichu' => 1,
+    '14 - GER - Cologne' => 1,
+    '17 - SCN - StockHolm' => 1,
+    '19 - SCN - Helsinque' => 1,
+    '21 - FRA - Paris' => 1,
+    '25 - ITA - Pisa' => 1,
+    '31 - UKG - Loch Ness' => 1,
+    '32 - UKG - Stonehenge' => 3
+];
+
+$pot_cen1_b = [
+    '23 - FRA - Bordeaux' => 4,
+    '01 - USA - Las Vegas' => 6,
+    '10 - JAP - Hiroshima' => 6,
+    '04 - USA - San Francisco' => 7,
+    '05 - SAM - Rio de Janeiro' => 7,
+    '12 - JAP - Quioto' => 7
+];
+
+$pot_cen1_c = [
+    '07 - SAM - Chichén Itzá' => 8,
+    '09 - JAP - Tóquio' => 9,
+    '13 - GER - Munique' => 9,
+    '15 - GER - Black Forest' => 10,
+    '16 - GER - Frankfurt' => 10,
+    '22 - FRA - Nice' => 10,
+    '26 - ITA - Roma' => 10,
+    '29 - UKG - Londres' => 10
+];
+
+$pot_cen402 = [
+    '01 - USA - Las Vegas' => 6,
+    '04 - USA - San Francisco' => 7,
+    '05 - SAM - Rio de Janeiro' => 7,
+    '07 - SAM - Chichén Itzá' => 8,
+    '09 - JAP - Tóquio' => 9,
+    '10 - JAP - Hiroshima' => 6,
+    '12 - JAP - Quioto' => 7,
+    '13 - GER - Munique' => 9,
+    '15 - GER - Black Forest' => 10,
+    '16 - GER - Frankfurt' => 10,
+    '22 - FRA - Nice' => 10,
+    '23 - FRA - Bordeaux' => 4,
+    '26 - ITA - Roma' => 10,
+    '29 - UKG - Londres' => 10
+];
+
+$pot_cen405_a = [
+    '06 - SAM - Machu Pichu' => 1,
+    '14 - GER - Cologne' => 1,
+    '17 - SCN - StockHolm' => 1,
+    '19 - SCN - Helsinque' => 1,
+    '21 - FRA - Paris' => 1,
+    '25 - ITA - Pisa' => 1,
+    '31 - UKG - Loch Ness' => 1
+];
+
+$pot_cen405_b = [
+    '02 - USA - Los Angeles' => 3,
+    '03 - USA - New York' => 3,
+    '08 - SAM - Floresta A' => 3,
+    '11 - JAP - Yokohama' => 3,
+    '18 - SCN - Copen' => 3,
+    '20 - SCN - Oslo' => 3,
+    '24 - FRA - Monaco' => 3,
+    '27 - ITA - Sicília' => 3,
+    '28 - ITA - Florença' => 3,
+    '30 - UKG - Sheffield' => 3,
+    '32 - UKG - Stonehenge' => 3
+];
+
+$pot_cen405_c = [
+    '23 - FRA - Bordeaux' => 4,
+    '01 - USA - Las Vegas' => 6,
+    '10 - JAP - Hiroshima' => 6,
+    '04 - USA - San Francisco' => 7,
+    '05 - SAM - Rio de Janeiro' => 7,
+    '12 - JAP - Quioto' => 7
+];
+
+$pot_cen405_d = [
+    '07 - SAM - Chichén Itzá' => 8,
+    '09 - JAP - Tóquio' => 9,
+    '13 - GER - Munique' => 9,
+    '15 - GER - Black Forest' => 10,
+    '16 - GER - Frankfurt' => 10,
+    '22 - FRA - Nice' => 10,
+    '26 - ITA - Roma' => 10,
+    '29 - UKG - Londres' => 10
+];
 
 
 // ============================================================================

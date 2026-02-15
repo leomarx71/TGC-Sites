@@ -212,7 +212,7 @@ $nav_tabs = [
                     <?php 
                     foreach ($tg1_tournaments as $t) {
                         // Usa a função padrão que já suporta o ID 117
-                        render_tournament_card($t['id'], $t['name'], $t['description'], "drawTG1");
+                        if ((int)$t['id'] !== 111) render_tournament_card($t['id'], $t['name'], $t['description'], "drawTG1");
                     }
                     ?>
                 </div>
@@ -321,6 +321,10 @@ $nav_tabs = [
             tg2_countries: <?php echo json_encode($tg2_countries); ?>,
             tg3k_systems: <?php echo json_encode($tg3k_4planet_systems); ?>,
             pot_cen1_a: <?php echo json_encode($pot_cen1_a); ?>,
+            pot_cen405_a: <?php echo json_encode($pot_cen405_a); ?>,
+            pot_cen405_b: <?php echo json_encode($pot_cen405_b); ?>,
+            pot_cen405_c: <?php echo json_encode($pot_cen405_c); ?>,
+            pot_cen405_d: <?php echo json_encode($pot_cen405_d); ?>,
             tournaments: {
                 tg1: <?php echo json_encode($tg1_tournaments); ?>,
                 tg2: <?php echo json_encode($tg2_tournaments); ?>,
@@ -335,6 +339,7 @@ $nav_tabs = [
         let bannedColors = [];
         let selectedPhases = {}; 
         let wheelSegments = []; 
+        let sorteio405State = { repeticoes: null, phase: null };
 
         const WHEEL_GRADIENTS = {
             'Vermelho': ['#ef4444', '#b91c1c'],
@@ -344,6 +349,8 @@ $nav_tabs = [
         };
 
         const TIEBREAKER_PHASES = ["8° de Final", "4° de Final", "Semifinal", "Final e 3°"];
+
+        const LA_LIGA_TOURNAMENT_IDS = [103, 104, 105, 113, 114, 115];
 
         const logSystem = (msg, type="INFO") => {
             const logBox = document.getElementById('system-logs');
@@ -466,6 +473,26 @@ $nav_tabs = [
                  }
              }
 
+            // --- REGRAS DO TORNEIO 401 ---
+            if (tournamentId && parseInt(tournamentId) === 401) {
+                if (phase.includes("F2") || phase.includes("F3") || phase.includes("F4") || phase.includes("F5") || phase.includes("8") || phase.includes("4") || phase.includes("Semi") || phase.includes("Final")) {
+                    return `<div class='mt-3 p-3 bg-yellow-50 text-yellow-800 text-xs rounded border border-yellow-200 leading-snug flex items-start gap-2 shadow-sm'><i class="fas fa-exclamation-triangle mt-0.5 text-yellow-600"></i><div><strong class="block mb-1 text-yellow-700">Regra de Desempate:</strong> O desempate deve ser jogando o cenário ‘Velozes e Furiosos 2092’ nas pistas fixas: USA - Las Vegas // San Francisco // SAM - Chichén Itzá // GER - Frankfurt</div></div>`;
+                }
+                return "";
+            }
+
+            if (tournamentId && parseInt(tournamentId) === 402) {
+                return `<div class='mt-3 p-3 bg-yellow-50 text-yellow-800 text-xs rounded border border-yellow-200 leading-snug flex items-start gap-2 shadow-sm'><i class="fas fa-exclamation-triangle mt-0.5 text-yellow-600"></i><div><strong class="block mb-1 text-yellow-700">Regra de Desempate:</strong> O desempate deve ser jogando o cenário ‘Velozes e Furiosos 2092’ nas pistas fixas: USA - Las Vegas // San Francisco // SAM - Chichén Itzá // GER - Frankfurt</div></div>`;
+            }
+
+            if (tournamentId && parseInt(tournamentId) === 403) {
+                return `<div class='mt-3 p-3 bg-yellow-50 text-yellow-800 text-xs rounded border border-yellow-200 leading-snug flex items-start gap-2 shadow-sm'><i class="fas fa-exclamation-triangle mt-0.5 text-yellow-600"></i><div><strong class="block mb-1 text-yellow-700">Regra de Desempate:</strong> O desempate deve ser jogando o cenário ‘Velozes e Furiosos 2092’ nas pistas fixas: USA - Las Vegas // San Francisco // SAM - Chichén Itzá // GER - Frankfurt</div></div>`;
+            }
+
+            if (tournamentId && [404, 406].includes(parseInt(tournamentId))) {
+                return `<div class='mt-3 p-3 bg-yellow-50 text-yellow-800 text-xs rounded border border-yellow-200 leading-snug flex items-start gap-2 shadow-sm'><i class="fas fa-exclamation-triangle mt-0.5 text-yellow-600"></i><div><strong class="block mb-1 text-yellow-700">Regra de Desempate:</strong> O desempate deve ser jogando o cenário ‘Velozes e Furiosos 2092’ nas pistas fixas: USA - Las Vegas // San Francisco // SAM - Chichén Itzá // GER - Frankfurt</div></div>`;
+            }
+
             if (TIEBREAKER_PHASES.includes(phase)) {
                 return `<div class='mt-3 p-3 bg-yellow-50 text-yellow-800 text-xs rounded border border-yellow-200 leading-snug flex items-start gap-2 shadow-sm'><i class="fas fa-exclamation-triangle mt-0.5 text-yellow-600"></i><div><strong class="block mb-1 text-yellow-700">Regra de Desempate:</strong> O desempate deve ser iniciado na pista / país seguinte ao último sorteado.</div></div>`;
             }
@@ -473,6 +500,51 @@ $nav_tabs = [
         };
 
         const renderResultList = (phase, items, type, tournamentId = null) => {
+             // Exibição especial: La Liga (9 rodadas da fase de grupos)
+             if (
+                 tournamentId &&
+                 LA_LIGA_TOURNAMENT_IDS.includes(parseInt(tournamentId)) &&
+                 (phase.includes("Grupos") || phase.includes("F1")) &&
+                 Array.isArray(items) &&
+                 items.length === 9 &&
+                 items.every(i => typeof i === 'string' && i.startsWith('Rodada '))
+             ) {
+                 let roundsHtml = '';
+                 items.forEach((roundText) => {
+                     const match = roundText.match(/^Rodada\s+(\d+)\s*-\s*(.+)$/i);
+                     if (!match) {
+                         roundsHtml += `<div class="border border-gray-200 rounded-lg p-3 bg-gray-50 text-xs text-gray-700">${roundText}</div>`;
+                         return;
+                     }
+
+                     const roundNumber = match[1];
+                     const tracks = match[2]
+                         .split(', ')
+                         .map(t => t.trim())
+                         .filter(Boolean);
+
+                     let tracksHtml = '<ol class="text-left text-sm space-y-1 font-mono text-gray-700 list-decimal list-inside">';
+                     tracks.forEach((track) => {
+                         tracksHtml += `<li class="border-b border-gray-100 last:border-0 pb-1">${track}</li>`;
+                     });
+                     tracksHtml += '</ol>';
+
+                     roundsHtml += `
+                         <div class="border border-gray-200 rounded-lg overflow-hidden bg-white">
+                             <div class="px-3 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                                 <span class="font-bold text-xs text-gray-600 uppercase">Rodada ${roundNumber}</span>
+                                 <span class="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-bold">10 pistas</span>
+                             </div>
+                             <div class="p-3">${tracksHtml}</div>
+                         </div>
+                     `;
+                 });
+
+                 let article = 'o(a)';
+                 if(type === 'país' || type === 'sistema') article = 'o';
+                 if(type === 'pista') article = 'a';
+                 return `<div class='flex flex-col gap-3 bg-white p-3 rounded border border-gray-200 shadow-sm'><div class='font-bold text-xs text-gray-500 uppercase border-b pb-2 mb-1 flex justify-between items-center bg-gray-50 -m-3 mb-2 p-3 rounded-t'><span>${phase}</span><span class="text-[10px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded font-bold uppercase tracking-wider">9 Rodadas</span></div>${roundsHtml}${getTiebreakerText(phase, type, article, tournamentId)}</div>`;
+             }
              // Lógica de separação visual para Torneio 110, Fase F2 (14 pistas)
              if (tournamentId && parseInt(tournamentId) === 110 && (phase.includes("F2") || phase.includes("8"))) {
                  let listHtml = '';
@@ -654,6 +726,144 @@ $nav_tabs = [
             const display = document.getElementById(`selected-phase-display-${tournamentId}`);
             if(display) display.innerText = phaseTitle;
             selectedPhases[tournamentId] = phaseTitle;
+
+            if (parseInt(tournamentId) === 405) {
+                const repBtn = document.getElementById('btn-repeticoes-405');
+                const pistaBtn = document.getElementById('btn-pista-405');
+                if (repBtn) {
+                    repBtn.disabled = false;
+                    repBtn.classList.remove('bg-gray-300', 'text-gray-500', 'cursor-not-allowed');
+                    repBtn.classList.add('bg-purple-600', 'text-white', 'hover:bg-purple-700');
+                }
+                if (pistaBtn) {
+                    pistaBtn.disabled = true;
+                    pistaBtn.classList.remove('bg-black', 'text-white', 'hover:bg-gray-900');
+                    pistaBtn.classList.add('bg-gray-300', 'text-gray-500', 'cursor-not-allowed');
+                }
+                sorteio405State = { repeticoes: null, phase: phaseTitle };
+            }
+        };
+
+        const sortearRepeticoes405 = () => {
+            const id = 405;
+            const phase = selectedPhases[id] || null;
+            const resultBox = document.getElementById(`result-${id}`);
+            const pistaBtn = document.getElementById('btn-pista-405');
+
+            if (!phase) {
+                alert('Selecione a fase antes de sortear.');
+                return;
+            }
+
+            const poolPonderado = [];
+            for (let n = 2; n <= 16; n++) {
+                poolPonderado.push(n);
+                if (n >= 11) poolPonderado.push(n);
+            }
+
+            const repeticoes = poolPonderado[Math.floor(Math.random() * poolPonderado.length)];
+            sorteio405State = { repeticoes, phase };
+
+            if (pistaBtn) {
+                pistaBtn.disabled = false;
+                pistaBtn.classList.remove('bg-gray-300', 'text-gray-500', 'cursor-not-allowed');
+                pistaBtn.classList.add('bg-black', 'text-white', 'hover:bg-gray-900');
+            }
+
+            if (resultBox) {
+                resultBox.classList.remove('hidden');
+                resultBox.innerHTML = `
+                    <div class='flex flex-col gap-2 bg-white p-3 rounded border border-gray-200 shadow-sm'>
+                        <div class='font-bold text-xs text-gray-500 uppercase border-b pb-2 mb-1 flex justify-between items-center bg-gray-50 -m-3 mb-2 p-3 rounded-t'>
+                            <span>${phase}</span>
+                            <span class='text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-bold uppercase tracking-wider'>Etapa 1</span>
+                        </div>
+                        <div class='text-sm text-gray-800'><strong>Número de repetições sorteado:</strong> ${repeticoes}</div>
+                        <div class='text-xs text-gray-500 italic'>Agora clique em <strong>Sortear Pista</strong>.</div>
+                    </div>
+                `;
+            }
+        };
+
+        const sortearPista405 = (repeticoes = null) => {
+            const id = 405;
+            const info = getTournamentInfo(id);
+            const phase = selectedPhases[id] || sorteio405State.phase || 'Fase Desconhecida';
+            const reps = Number.isInteger(repeticoes) ? repeticoes : sorteio405State.repeticoes;
+            const resultBox = document.getElementById(`result-${id}`);
+
+            if (!phase || phase === 'Fase Desconhecida') {
+                alert('Selecione a fase antes de sortear.');
+                return;
+            }
+            if (!reps) {
+                alert('Primeiro sorteie as repetições.');
+                return;
+            }
+
+            let pot = PHP_CONFIG.pot_cen405_a || {};
+            if (reps === 2 || reps === 3) pot = PHP_CONFIG.pot_cen405_d || {};
+            else if (reps >= 4 && reps <= 6) pot = PHP_CONFIG.pot_cen405_c || {};
+            else if (reps >= 7 && reps <= 10) pot = PHP_CONFIG.pot_cen405_b || {};
+            else if (reps >= 11 && reps <= 16) pot = PHP_CONFIG.pot_cen405_a || {};
+
+            const tracks = Object.keys(pot);
+            if (!tracks.length) {
+                alert('Pote do torneio 405 não configurado.');
+                return;
+            }
+
+            const pista = tracks[Math.floor(Math.random() * tracks.length)];
+            const voltas = pot[pista];
+            const regraDesempate = "Regra de Desempate: O desempate deve ser jogando o cenário ‘Velozes e Furiosos 2092’ nas pistas fixas: USA - Las Vegas // San Francisco // SAM - Chichén Itzá // GER - Frankfurt";
+
+            if (resultBox) {
+                resultBox.classList.remove('hidden');
+                resultBox.innerHTML = `
+                    <div class='flex flex-col gap-2 bg-white p-3 rounded border border-gray-200 shadow-sm'>
+                        <div class='font-bold text-xs text-gray-500 uppercase border-b pb-2 mb-1 flex justify-between items-center bg-gray-50 -m-3 mb-2 p-3 rounded-t'>
+                            <span>${phase}</span>
+                            <span class='text-[10px] bg-black text-white px-2 py-0.5 rounded font-bold uppercase tracking-wider'>Etapa 2</span>
+                        </div>
+                        <div class='text-sm text-gray-800'><strong>Número de repetições sorteado:</strong> ${reps}</div>
+                        <div class='text-sm text-gray-800'><strong>Pista sorteada:</strong> ${pista}</div>
+                        <div class='text-sm text-gray-800'><strong>Número de voltas:</strong> ${voltas}</div>
+                        <div class='mt-2 p-2 bg-yellow-50 text-yellow-800 text-xs rounded border border-yellow-200 leading-snug'><strong>Regra de Desempate:</strong> O desempate deve ser jogando o cenário ‘Velozes e Furiosos 2092’ nas pistas fixas: USA - Las Vegas // San Francisco // SAM - Chichén Itzá // GER - Frankfurt</div>
+                    </div>
+                `;
+            }
+
+            const payload = {
+                tournamentId: id,
+                title: info.title,
+                phase: phase,
+                drawnItems: [
+                    `Número de repetições sorteado: ${reps}`,
+                    `Pista sorteada: ${pista}`,
+                    `Número de voltas: ${voltas}`,
+                    regraDesempate
+                ]
+            };
+
+            fetch('api/SaveDraw.php', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    logSystem(`Sorteio #405 salvo com sucesso.`, "SUCCESS");
+                    loadGlobalHistory();
+                    confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 } });
+                } else {
+                    logSystem(`Erro ao salvar sorteio #405: ${data.message}`, "ERROR");
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                logSystem(`Erro de conexão ao salvar #405`, "ERROR");
+            });
         };
 
         const loadGlobalHistory = () => {
@@ -697,6 +907,12 @@ $nav_tabs = [
             const resultBox = document.getElementById(`result-${id}`);
             const phase = selectedPhases[id] || 'Fase Desconhecida';
             const info = getTournamentInfo(id);
+            let effectiveCount = count;
+
+            // Torneio 108: Final e 3° (F5) com 16 pistas
+            if (parseInt(id) === 108 && (phase.includes("F5") || phase.includes("Final"))) {
+                effectiveCount = 16;
+            }
 
             if(btn) {
                 const icon = btn.querySelector('i');
@@ -706,7 +922,7 @@ $nav_tabs = [
             }
 
             // --- LÓGICA DE DECISÃO: SERVER-SIDE VS CLIENT-SIDE ---
-            if (id == 102 || id == 118 || id == 106 || [101, 107, 112, 116, 109, 110, 117].includes(parseInt(id))) {
+            if (id == 102 || id == 118 || id == 106 || [101, 107, 112, 116, 109, 110, 117, 301, 401, 402, 403, 404, 406, ...LA_LIGA_TOURNAMENT_IDS].includes(parseInt(id))) {
                 // Sorteio Server-Side (Regras complexas: Países, Stonehenge, Pote Cíclico)
                 const payload = {
                     tournamentId: id,
@@ -749,7 +965,7 @@ $nav_tabs = [
             } else {
                 // Sorteio Client-Side (Legado/Simples) e Salva via API
                 setTimeout(() => {
-                    const selectedItems = getRandomItems(pool, count);
+                    const selectedItems = getRandomItems(pool, effectiveCount);
                     resultBox.classList.remove('hidden');
                     // Passa ID para renderResultList para tratar msg 109 (caso caia aqui por erro de config)
                     resultBox.innerHTML = renderResultList(phase, selectedItems, itemType, id);
@@ -791,7 +1007,12 @@ $nav_tabs = [
         const drawTG1 = (id) => handleDraw(id, PHP_CONFIG.tracks, 12, "pista");
         const drawTG2 = (id) => handleDraw(id, PHP_CONFIG.tg2_countries, 2, "país");
         const drawTG3K = (id) => handleDraw(id, PHP_CONFIG.tg3k_systems, 2, "sistema");
-        const drawCenario = (id) => handleDraw(id, PHP_CONFIG.pot_cen1_a, 4, "pista");
+        const drawCenario = (id) => {
+            const cenarioPool = Array.isArray(PHP_CONFIG.pot_cen1_a)
+                ? PHP_CONFIG.pot_cen1_a
+                : Object.keys(PHP_CONFIG.pot_cen1_a || {});
+            handleDraw(id, cenarioPool, 4, "pista");
+        };
 
         const checkForbiddenButton = () => {
             const select = document.getElementById('forbidden-car-tournament-select');
@@ -926,7 +1147,7 @@ $nav_tabs = [
         });
 
         window.app = {
-            checkLogin, switchTab, drawTG1, drawTG2, drawTG3K, drawCenario, drawForbiddenCar, toggleCarBan, selectPhase, loadGlobalHistory, checkForbiddenButton,
+            checkLogin, switchTab, drawTG1, drawTG2, drawTG3K, drawCenario, drawForbiddenCar, toggleCarBan, selectPhase, loadGlobalHistory, checkForbiddenButton, sortearRepeticoes405, sortearPista405,
             refreshSystem: () => window.location.reload(),
             resetTG1: () => logSystem('Reset TG1 acionado'),
             backupGlobal: () => alert('Backup solicitado (Simulação)'),
