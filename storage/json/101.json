@@ -1,14 +1,14 @@
 {
-  "id": 102,
-  "title": "T2 - American LeMans Series",
+  "id": 101,
+  "title": "T1 - Torneio de Verão: Dakar Series",
   "lastUpdate": "",
   "latestResult": {
-    "phase": "Rodada 0",
+    "phase": "8° de Final",
     "drawnItems": [],
     "date": ""
   },
   "usedItems": [
-    "NULL"
+    "UKG"
   ],
   "roundCounter": 0
 }

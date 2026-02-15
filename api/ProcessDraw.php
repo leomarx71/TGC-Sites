@@ -23,8 +23,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 // Lê Input
 $input = json_decode(file_get_contents('php://input'), true);
 $tournamentId = $input['tournamentId'] ?? null;
-// A fase que vem do front (ex: "Rodada") será sobrescrita pela lógica do contador server-side
-$inputPhaseLabel = $input['phase'] ?? 'Rodada'; 
+// A fase selecionada no botão (frontend)
+$inputPhaseLabel = $input['phase'] ?? 'Fase Desconhecida'; 
 $title = $input['title'] ?? "Torneio $tournamentId";
 
 if (!$tournamentId) {
@@ -38,198 +38,296 @@ try {
     // 1. Carrega Estado Atual
     $stateFile = $tournamentId . '.json';
     $currentState = FileManager::readJson($stateFile);
-    
-    // --- LÓGICA DO CONTADOR DE RODADAS ---
-    $currentRound = $currentState['roundCounter'] ?? 0;
-    $nextRound = $currentRound + 1;
-    
-    if ($nextRound > 50) {
-        $nextRound = 1; // Reseta após 50 ou mantém? Assumindo reset cíclico.
-    }
-    
-    // Define o nome oficial da fase para exibição e histórico
-    $officialPhaseName = "Rodada $nextRound";
-    
     $usedItems = $currentState['usedItems'] ?? [];
+
+    // --- LÓGICA DO CONTADOR DE RODADAS E NOME DA FASE ---
+    $phaseToSave = $inputPhaseLabel;
+    $shouldUpdateRoundCounter = false;
+    $nextRound = 0;
+
+    // Apenas para 102, 118 e 106 aplicamos a lógica de "Rodada X"
+    if ($tournamentId == 102 || $tournamentId == 118 || $tournamentId == 106) {
+        $currentRound = $currentState['roundCounter'] ?? 0;
+        $nextRound = $currentRound + 1;
+        
+        if ($nextRound > 50) {
+            $nextRound = 1; // Reseta após 50
+        }
+        
+        $phaseToSave = "Rodada $nextRound";
+        $shouldUpdateRoundCounter = true;
+    }
 
     // 2. Define Pote Base e Regras
     $basePool = [];
     $drawCount = 0;
     $specialRules = false;
     $stonehengeRule = false;
+    $formatAsRounds = false; 
+    $drawResult = []; // Inicializa array de resultado
+    $customLogicApplied = false; // Flag para indicar se lógica customizada foi usada (ex: 110)
     
     // Configuração baseada no ID
     if ($tournamentId == 102 || $tournamentId == 118) {
-        global $tracks_tg1; // Do Data.php
+        global $tracks_tg1; 
         $basePool = $tracks_tg1;
         $drawCount = 12;
-        $specialRules = true; // Regra de países
+        $specialRules = true; // Regra de países obrigatórios
         $stonehengeRule = true; // Regra Stonehenge 12ª posição
-    } else {
+    } 
+    elseif ($tournamentId == 106) {
+        global $tracks_tg1; 
+        $basePool = $tracks_tg1;
+        $drawCount = 8; 
+        $specialRules = true; 
+        $stonehengeRule = true; 
+    }
+    elseif ($tournamentId == 109) {
+        global $countries_tg1; 
+        $basePool = $countries_tg1;
+        
+        if (stripos($inputPhaseLabel, 'F0') !== false || stripos($inputPhaseLabel, 'Eliminat') !== false) {
+            $drawCount = 2;
+        }
+        elseif (stripos($inputPhaseLabel, 'F5') !== false || stripos($inputPhaseLabel, 'Final e 3') !== false) {
+            $drawCount = 4;
+        }
+        else {
+            $drawCount = 3;
+        }
+    }
+    // --- LÓGICA ESPECÍFICA TORNEIO 117 ---
+    elseif ($tournamentId == 117) {
+        global $countries_tg1;
+        $basePool = $countries_tg1;
+        $customLogicApplied = false;
+
+        // Eliminatórias (F0): 3 países
+        if (stripos($inputPhaseLabel, 'Eliminat') !== false || stripos($inputPhaseLabel, 'F0') !== false) {
+            $drawCount = 3;
+        }
+        // 4° de Final (F3): 4 países
+        elseif (stripos($inputPhaseLabel, '4') !== false || stripos($inputPhaseLabel, 'F3') !== false) {
+            $drawCount = 4;
+        }
+        // Semifinal (F4): 4 países
+        elseif (stripos($inputPhaseLabel, 'Semi') !== false || stripos($inputPhaseLabel, 'F4') !== false) {
+            $drawCount = 4;
+        }
+        // Final e 3° (F5): 8 países Sequenciais (Ciclo)
+        elseif (stripos($inputPhaseLabel, 'Final') !== false || stripos($inputPhaseLabel, 'F5') !== false) {
+            $customLogicApplied = true;
+            $totalCountries = count($basePool); // Deve ser 8
+            
+            // Sorteia um índice de início aleatório (0 a 7)
+            $startIndex = rand(0, $totalCountries - 1);
+            
+            // Gera a lista sequencial a partir do índice sorteado (wrap-around)
+            for ($i = 0; $i < $totalCountries; $i++) {
+                $idx = ($startIndex + $i) % $totalCountries;
+                $drawResult[] = $basePool[$idx];
+            }
+            $drawCount = 8;
+        }
+        else {
+            $drawCount = 3; // Fallback para outras fases não mapeadas
+        }
+    }
+    elseif ($tournamentId == 110) {
+        // --- REGRA EXCLUSIVA TORNEIO 110 ---
+        $customLogicApplied = true;
+        global $tracks_110_pit, $tracks_110_nopit;
+        
+        if (stripos($inputPhaseLabel, 'F1') !== false || stripos($inputPhaseLabel, 'Grupos') !== false) {
+            $poolPit = $tracks_110_pit; shuffle($poolPit); $selectedPit = array_slice($poolPit, 0, 5);
+            $poolNoPit = $tracks_110_nopit; shuffle($poolNoPit); $selectedNoPit = array_slice($poolNoPit, 0, 5);
+            for ($i = 0; $i < 5; $i++) {
+                if (isset($selectedPit[$i])) $drawResult[] = $selectedPit[$i] . " <span class='ml-2 text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded border border-red-200 font-bold'>COM_PIT</span>";
+                if (isset($selectedNoPit[$i])) $drawResult[] = $selectedNoPit[$i] . " <span class='ml-2 text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded border border-green-200 font-bold'>SEM_PIT</span>";
+            }
+            $drawCount = 10;
+        } 
+        elseif (stripos($inputPhaseLabel, 'F2') !== false || stripos($inputPhaseLabel, '8') !== false) {
+            $poolPit = $tracks_110_pit; shuffle($poolPit); $poolNoPit = $tracks_110_nopit; shuffle($poolNoPit);
+            $group1 = (function($p, $np) { $r=[]; $m=max(count($p),count($np)); for($i=0;$i<$m;$i++){ if(isset($p[$i])) $r[]=$p[$i]." <span class='ml-2 text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded border border-red-200 font-bold'>COM_PIT</span>"; if(isset($np[$i])) $r[]=$np[$i]." <span class='ml-2 text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded border border-green-200 font-bold'>SEM_PIT</span>"; } return $r; })(array_slice($poolPit,0,5), array_slice($poolNoPit,0,2));
+            $group2 = (function($p, $np) { $r=[]; $m=max(count($p),count($np)); for($i=0;$i<$m;$i++){ if(isset($p[$i])) $r[]=$p[$i]." <span class='ml-2 text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded border border-red-200 font-bold'>COM_PIT</span>"; if(isset($np[$i])) $r[]=$np[$i]." <span class='ml-2 text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded border border-green-200 font-bold'>SEM_PIT</span>"; } return $r; })(array_slice($poolPit,5,4), array_slice($poolNoPit,2,3));
+            $drawResult = array_merge($group1, $group2);
+            $drawCount = 14;
+        } 
+        elseif (stripos($inputPhaseLabel, 'F3') !== false || stripos($inputPhaseLabel, '4') !== false) {
+            $poolPit = $tracks_110_pit; shuffle($poolPit); $poolNoPit = $tracks_110_nopit; shuffle($poolNoPit);
+            $group1 = (function($p, $np) { $r=[]; $m=max(count($p),count($np)); for($i=0;$i<$m;$i++){ if(isset($p[$i])) $r[]=$p[$i]." <span class='ml-2 text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded border border-red-200 font-bold'>COM_PIT</span>"; if(isset($np[$i])) $r[]=$np[$i]." <span class='ml-2 text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded border border-green-200 font-bold'>SEM_PIT</span>"; } return $r; })(array_slice($poolPit,0,5), array_slice($poolNoPit,0,3));
+            $group2 = (function($p, $np) { $r=[]; $m=max(count($p),count($np)); for($i=0;$i<$m;$i++){ if(isset($p[$i])) $r[]=$p[$i]." <span class='ml-2 text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded border border-red-200 font-bold'>COM_PIT</span>"; if(isset($np[$i])) $r[]=$np[$i]." <span class='ml-2 text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded border border-green-200 font-bold'>SEM_PIT</span>"; } return $r; })(array_slice($poolPit,5,5), array_slice($poolNoPit,3,3));
+            $drawResult = array_merge($group1, $group2);
+            $drawCount = 16;
+        }
+        elseif (stripos($inputPhaseLabel, 'F4') !== false || stripos($inputPhaseLabel, 'Semifinal') !== false) {
+            $poolPit = $tracks_110_pit; shuffle($poolPit); $poolNoPit = $tracks_110_nopit; shuffle($poolNoPit);
+            $interleave = function($p, $np) { $r=[]; $m=max(count($p),count($np)); for($i=0;$i<$m;$i++){ if(isset($p[$i])) $r[]=$p[$i]." <span class='ml-2 text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded border border-red-200 font-bold'>COM_PIT</span>"; if(isset($np[$i])) $r[]=$np[$i]." <span class='ml-2 text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded border border-green-200 font-bold'>SEM_PIT</span>"; } return $r; };
+            $drawResult = array_merge($interleave(array_slice($poolPit,0,4), array_slice($poolNoPit,0,3)), $interleave(array_slice($poolPit,4,4), array_slice($poolNoPit,3,3)), $interleave(array_slice($poolPit,8,4), array_slice($poolNoPit,6,3)));
+            $drawCount = 21;
+        }
+        elseif (stripos($inputPhaseLabel, 'F5') !== false || stripos($inputPhaseLabel, 'Final') !== false) {
+            $poolPit = $tracks_110_pit; shuffle($poolPit); $poolNoPit = $tracks_110_nopit; shuffle($poolNoPit);
+            $interleave = function($p, $np) { $r=[]; $m=max(count($p),count($np)); for($i=0;$i<$m;$i++){ if(isset($p[$i])) $r[]=$p[$i]." <span class='ml-2 text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded border border-red-200 font-bold'>COM_PIT</span>"; if(isset($np[$i])) $r[]=$np[$i]." <span class='ml-2 text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded border border-green-200 font-bold'>SEM_PIT</span>"; } return $r; };
+            $drawResult = array_merge($interleave(array_slice($poolPit,0,3), array_slice($poolNoPit,0,3)), $interleave(array_slice($poolPit,3,3), array_slice($poolNoPit,3,3)), $interleave(array_slice($poolPit,6,3), array_slice($poolNoPit,6,3)), $interleave(array_slice($poolPit,9,4), array_slice($poolNoPit,9,2)));
+            $drawCount = 24;
+        }
+        else {
+            global $tracks_tg1; $basePool = $tracks_tg1; $drawCount = 12; $customLogicApplied = false;
+        }
+    }
+    elseif (in_array($tournamentId, [101, 107, 112, 116])) {
+        global $countries_tg1; 
+        $basePool = $countries_tg1;
+        
+        if (stripos($inputPhaseLabel, 'F1') !== false || stripos($inputPhaseLabel, 'Grupos') !== false) {
+            $drawCount = 6; 
+            $formatAsRounds = true;
+        } 
+        elseif (stripos($inputPhaseLabel, 'F5') !== false || stripos($inputPhaseLabel, 'Final e 3') !== false) {
+            $drawCount = 4;
+        }
+        else {
+            $drawCount = 3; 
+        }
+    }
+    else {
         // Fallback genérico
          global $tracks_tg1;
          $basePool = $tracks_tg1;
          $drawCount = 12; 
     }
 
-    // 3. Processamento do Pote (Lógica Cíclica Ajustada)
-    $availablePool = array_diff($basePool, $usedItems);
-    $drawResult = [];
-    
-    // Variável para rastrear quais itens devem ser persistidos como "usados" no novo estado
-    // Se não houver reset, serão os usados antigos + novos sorteados
-    // Se houver reset, serão APENAS os novos sorteados do novo ciclo
+    // --- LÓGICA DE SORTEIO PADRÃO (Se não foi customizada acima) ---
     $nextUsedItemsState = $usedItems; 
-    
-    // Se o pote disponível é menor que o necessário, usa o resto e reseta
-    if (count($availablePool) < $drawCount) {
-        Logger::info("ProcessDraw: Pote cíclico ativado (Disponível: " . count($availablePool) . ", Necessário: $drawCount)");
-        
-        // Pega tudo que sobrou do ciclo antigo
-        $residue = $availablePool;
-        foreach ($residue as $item) {
-            $drawResult[] = $item;
-        }
-        
-        // --- PONTO CRÍTICO: RESET DO CICLO ---
-        // O ciclo antigo fechou. O novo estado de "usados" começará do zero apenas com o que for tirado do pote novo.
-        $nextUsedItemsState = []; 
-        
-        // Reseta pool disponível para o total completo
-        $availablePool = $basePool;
-        
-        // Remove do pote novo o que já foi pego no resíduo para não repetir NA MESMA RODADA
-        // (Mas isso não afeta a persistência do próximo ciclo, apenas o sorteio atual)
-        $availablePool = array_diff($availablePool, $residue);
-    }
+    $residue = [];
 
-    // 4. Sorteio dos itens restantes (considerando regras especiais)
-    $slotsRemaining = $drawCount - count($drawResult);
-    $itemsDrawnFromNewPool = []; // Rastreia o que saiu do pote novo/atual
-    
-    if ($specialRules && $slotsRemaining > 0) {
-        // Regra de Países
-        $requiredCountries = ['USA', 'SAM', 'JAP', 'GER', 'SCN', 'FRA', 'ITA', 'UKG'];
-        $presentCountries = [];
-
-        foreach ($drawResult as $track) {
-            $parts = explode(' - ', $track);
-            if (isset($parts[1])) $presentCountries[] = $parts[1];
-        }
-
-        $missingCountries = array_diff($requiredCountries, $presentCountries);
+    if (!$customLogicApplied) {
+        $availablePool = array_diff($basePool, $usedItems);
         
-        foreach ($missingCountries as $country) {
-            if ($slotsRemaining <= 0) break;
-
-            $countryTracks = array_filter($availablePool, function($t) use ($country) {
-                return strpos($t, " - $country - ") !== false;
-            });
-
-            if (!empty($countryTracks)) {
-                $pick = $countryTracks[array_rand($countryTracks)];
-                $drawResult[] = $pick;
-                $itemsDrawnFromNewPool[] = $pick; // Marca como novo
-                
-                $availablePool = array_diff($availablePool, [$pick]);
-                $slotsRemaining--;
+        // Lógica Cíclica
+        if (count($availablePool) < $drawCount) {
+            Logger::info("ProcessDraw: Pote cíclico ativado");
+            $residue = $availablePool;
+            foreach ($residue as $item) {
+                $drawResult[] = $item;
             }
+            $nextUsedItemsState = []; 
+            $availablePool = $basePool;
+            $availablePool = array_diff($availablePool, $residue);
         }
-    }
 
-    // 5. Completa os slots restantes com aleatórios
-    if ($slotsRemaining > 0) {
-        $availablePool = array_values($availablePool);
-        if (count($availablePool) >= $slotsRemaining) {
-            $randomKeys = array_rand($availablePool, $slotsRemaining);
-            if (!is_array($randomKeys)) $randomKeys = [$randomKeys];
+        $slotsRemaining = $drawCount - count($drawResult);
+        $itemsDrawnFromNewPool = []; 
+        
+        // Regras Especiais (Países)
+        if ($specialRules && $slotsRemaining > 0) {
+            $requiredCountries = ['USA', 'SAM', 'JAP', 'GER', 'SCN', 'FRA', 'ITA', 'UKG'];
+            $presentCountries = [];
+            foreach ($drawResult as $track) {
+                $parts = explode(' - ', $track);
+                if (isset($parts[1])) $presentCountries[] = $parts[1];
+            }
+            $missingCountries = array_diff($requiredCountries, $presentCountries);
             
-            foreach ($randomKeys as $key) {
-                $pick = $availablePool[$key];
-                $drawResult[] = $pick;
-                $itemsDrawnFromNewPool[] = $pick; // Marca como novo
+            foreach ($missingCountries as $country) {
+                if ($slotsRemaining <= 0) break;
+                $countryTracks = array_filter($availablePool, function($t) use ($country) {
+                    return strpos($t, " - $country - ") !== false;
+                });
+                if (!empty($countryTracks)) {
+                    $pick = $countryTracks[array_rand($countryTracks)];
+                    $drawResult[] = $pick;
+                    $itemsDrawnFromNewPool[] = $pick;
+                    $availablePool = array_diff($availablePool, [$pick]);
+                    $slotsRemaining--;
+                }
             }
+        }
+
+        // Completa aleatórios
+        if ($slotsRemaining > 0) {
+            $availablePool = array_values($availablePool);
+            if (count($availablePool) >= $slotsRemaining) {
+                $randomKeys = array_rand($availablePool, $slotsRemaining);
+                if (!is_array($randomKeys)) $randomKeys = [$randomKeys];
+                foreach ($randomKeys as $key) {
+                    $pick = $availablePool[$key];
+                    $drawResult[] = $pick;
+                    $itemsDrawnFromNewPool[] = $pick;
+                }
+            } else {
+                foreach($availablePool as $pick) {
+                    $drawResult[] = $pick;
+                    $itemsDrawnFromNewPool[] = $pick;
+                }
+            }
+        }
+
+        // Regra Stonehenge
+        if ($stonehengeRule) {
+            $targetTrack = "32 - UKG - Stonehenge";
+            $foundIndex = -1;
+            foreach ($drawResult as $idx => $track) {
+                if ($track === $targetTrack) {
+                    $foundIndex = $idx;
+                    break;
+                }
+            }
+            if ($foundIndex !== -1) {
+                unset($drawResult[$foundIndex]);
+                $drawResult = array_values($drawResult);
+                $drawResult[] = $targetTrack;
+            }
+        }
+
+        // Corte Final
+        $drawResult = array_slice($drawResult, 0, $drawCount);
+
+        // Atualiza Estado de Usados
+        if (empty($nextUsedItemsState) && count($residue) > 0) {
+            $nextUsedItemsState = $itemsDrawnFromNewPool;
         } else {
-            // Caso extremo
-            foreach($availablePool as $pick) {
-                $drawResult[] = $pick;
-                $itemsDrawnFromNewPool[] = $pick;
-            }
+            $nextUsedItemsState = array_merge($nextUsedItemsState, $drawResult);
         }
+        $nextUsedItemsState = array_values(array_unique($nextUsedItemsState));
+    } 
+    else {
+        // Lógica customizada (110 e 117-F5) não persiste ciclo de usados da mesma forma
     }
 
-    // 6. Regra Stonehenge
-    if ($stonehengeRule) {
-        $targetTrack = "32 - UKG - Stonehenge";
-        $foundIndex = -1;
-        foreach ($drawResult as $idx => $track) {
-            if ($track === $targetTrack) {
-                $foundIndex = $idx;
-                break;
-            }
-        }
-        if ($foundIndex !== -1) {
-            unset($drawResult[$foundIndex]);
-            $drawResult = array_values($drawResult);
-            $drawResult[] = $targetTrack;
-        }
+    // 8. Formatação para Exibição
+    $displayItems = $drawResult;
+    if ($formatAsRounds && count($drawResult) === 6) {
+        $displayItems = [
+            "Rodada 1 - " . $drawResult[0] . " e " . $drawResult[1],
+            "Rodada 2 - " . $drawResult[2] . " e " . $drawResult[3],
+            "Rodada 3 - " . $drawResult[4] . " e " . $drawResult[5]
+        ];
     }
 
-    // Corte final para garantir tamanho exato
-    $drawResult = array_slice($drawResult, 0, $drawCount);
-
-    // 7. Atualiza lista de itens usados para persistência
-    // Se nextUsedItemsState foi zerado (reset cíclico), adicionamos apenas o que veio do NOVO pool ($itemsDrawnFromNewPool)
-    // Se não foi zerado, adicionamos tudo que foi sorteado agora (pois tudo veio do mesmo pool corrente)
-    if (empty($nextUsedItemsState) && count($residue) > 0) {
-        // Houve reset: Persiste APENAS o que saiu do pote novo
-        $nextUsedItemsState = $itemsDrawnFromNewPool;
-    } else {
-        // Fluxo normal: Acumula o sorteio atual
-        $nextUsedItemsState = array_merge($nextUsedItemsState, $drawResult);
-    }
-    
-    $nextUsedItemsState = array_values(array_unique($nextUsedItemsState));
-
-    // 8. Salva usando FileManager
-    // Prepara dados para salvar no JSON de estado
+    // 9. Salva
     $drawData = [
         'title' => $title,
-        'phase' => $officialPhaseName, // Usa "Rodada X"
-        'drawnItems' => $drawResult
+        'phase' => $phaseToSave,
+        'drawnItems' => $displayItems
     ];
-    
-    // Injeta o contador de rodada no array que será salvo
-    // O método saveGranularDraw precisará ser ligeiramente "enganado" ou melhorado, 
-    // mas como ele lê o estado atual e faz merge, vamos passar o contador via um método auxiliar ou modificar o FileManager.
-    // Para não alterar o FileManager drasticamente agora, vamos ler, modificar e salvar manualmente aqui ou passar via drawData se o FileManager suportasse.
-    
-    // Melhor abordagem: Usar FileManager::writeJson diretamente para ter controle total do estado
-    // Mas precisamos atualizar histórico também. Vamos usar o saveGranularDraw e depois atualizar o contador separadamente ou passar um array de estado completo.
-    
-    // Vamos atualizar o saveGranularDraw no FileManager (na memória aqui, mas o arquivo físico é outro).
-    // Como não posso editar 2 arquivos no mesmo bloco de código se não solicitado, vou usar a lógica de:
-    // Salvar o sorteio normal -> Ler o arquivo -> Adicionar contador -> Salvar de novo. É ineficiente mas seguro sem editar FileManager.
-    // OU: Passo o contador dentro de $nextUsedItemsState? Não, suja o array.
-    
-    // Solução: O FileManager::saveGranularDraw aceita $updatedUsedItems.
-    // Vou fazer o seguinte: Salvo normalmente. O FileManager salva `usedItems`.
-    // Depois, reabro o arquivo JSON e injeto o `roundCounter`.
     
     FileManager::saveGranularDraw($tournamentId, $drawData, $nextUsedItemsState);
     
-    // Injeção do Contador (Pós-processamento)
-    $finalState = FileManager::readJson($stateFile);
-    $finalState['roundCounter'] = $nextRound;
-    FileManager::writeJson($stateFile, $finalState);
+    if ($shouldUpdateRoundCounter) {
+        $finalState = FileManager::readJson($stateFile);
+        $finalState['roundCounter'] = $nextRound;
+        FileManager::writeJson($stateFile, $finalState);
+    }
 
-    Logger::success("ProcessDraw: Sorteio ID $tournamentId (Rodada $nextRound) finalizado.");
+    Logger::success("ProcessDraw: Sorteio ID $tournamentId ($phaseToSave) finalizado.");
 
-    // 9. Retorna Resultado
     echo json_encode([
         'status' => 'success', 
-        'data' => $drawResult,
-        'phase' => $officialPhaseName, // Retorna o nome correto para o front atualizar
+        'data' => $displayItems,
+        'phase' => $phaseToSave,
         'used_count' => count($nextUsedItemsState)
     ]);
 

@@ -26,7 +26,11 @@ $cars_global = [
     ['id' => 'p4_3', 'name' => 'Sidewinder', 'class' => 'X', 'banned' => true, 'color' => 'text-gray-400', 'color_name' => 'Branco'],
 ];
 
-// Pistas TG1 (32 Pistas)
+// ============================================================================
+// LISTAS DE POTES PARA O TOP GEAR 1
+// ============================================================================
+
+// Pistas TG1 (32 Pistas) - Atualizado conforme solicitação (Ordem ITA ajustada)
 $tracks_tg1 = [
     '01 - USA - Las Vegas', '02 - USA - Los Angeles', '03 - USA - New York', '04 - USA - San Francisco',
     '05 - SAM - Rio de Janeiro', '06 - SAM - Machu Picchu', '07 - SAM - Chichén Itza', '08 - SAM - Floresta A.',
@@ -34,23 +38,23 @@ $tracks_tg1 = [
     '13 - GER - Munich', '14 - GER - Cologne', '15 - GER - Black Forest', '16 - GER - Frankfurt',
     '17 - SCN - Stockholm', '18 - SCN - Copenhagen', '19 - SCN - Helsinki', '20 - SCN - Oslo',
     '21 - FRA - Paris', '22 - FRA - Nice', '23 - FRA - Bordeaux', '24 - FRA - Monaco',
-    '25 - ITA - Rome', '26 - ITA - Pisa', '27 - ITA - Florence', '28 - ITA - Sicily',
+    '25 - ITA - Pisa', '26 - ITA - Rome', '27 - ITA - Sicily', '28 - ITA - Florence',
     '29 - UKG - London', '30 - UKG - Sheffield', '31 - UKG - Loch Ness', '32 - UKG - Stonehenge'
 ];
 
-// ============================================================================
-// CONFIGURAÇÕES ESPECIAIS E POTES
-// ============================================================================
 
-// Potes de Pistas TG1 (Pit vs No Pit)
-$tracks_T10_pit = [
+$countries_tg1 = [
+    'USA','SAM','JAP','GER','SCN','FRA','ITA','UKG'
+];
+
+$tracks_110_pit = [
     "04 USA - San Francisco", "05 SAM - Rio", "07 SAM - Chichen Itza", 
     "09 JAP - Tokyo", "10 JAP - Hiroshima", "12 JAP - Kyoto", 
     "13 GER - Munich", "15 GER - Black Forest", "16 GER - Frankfurt", 
     "22 FRA - Nice", "23 FRA - Bordeaux", "26 ITA - Rome", "29 UKG - London"
 ];
 
-$tracks_T10_nopit = [
+$tracks_110_nopit = [
     "01 USA - Las Vegas", "02 USA - Los Angeles", "03 USA - New York", 
     "06 SAM - Machu Picchu", "08 SAM - Rain Forest", "11 JAP - Yokohama", 
     "14 GER - Cologne", "17 SCN - Stockholm", "18 SCN - Copenhagen", 
@@ -60,14 +64,9 @@ $tracks_T10_nopit = [
     "32 UKG - Stonehenge"
 ];
 
-// Potes Cenário 1
-$pot_cen1_a = ["06 SAM - Machu Picchu", "14 GER - Cologne", "17 SCN - Stockholm", "19 SCN - Helsinki", "21 FRA - Paris", "25 ITA - Pisa", "31 UKG - Loch Ness", "32 UKG - Stonehenge"];
-$pot_cen1_b = ["23 FRA - Bordeaux", "01 USA - Las Vegas", "10 JAP - Hiroshima", "04 USA - San Francisco", "05 SAM - Rio", "12 JAP - Kyoto"];
-$pot_cen1_c = ["07 SAM - Chichen Itza", "09 JAP - Tokyo", "13 GER - Munich", "15 GER - Black Forest", "16 GER - Frankfurt", "22 FRA - Nice", "26 ITA - Rome", "29 UKG - London"];
-
-// Sistemas TG3000
-$tg3k_all_systems = ["Merak", "Zosmar", "Sarin", "Alderam", "Kajam", "Lesath", "Miram", "Subrat", "Toygeta", "Vega_5", "Naosphein", "Kraz"];
-$tg3k_4planet_systems = ["Zosmar", "Sarin", "Alderam", "Lesath", "Miram", "Subrat", "Vega_5"];
+// ============================================================================
+// LISTAS DE POTES PARA O TOP GEAR 2
+// ============================================================================
 
 // Top Gear 2 - Países e Pares
 $tg2_countries = [
@@ -89,6 +88,26 @@ $tg2_country_pairs = [
     ["ITA - Italy", "SCN - Scandinavia"], ["USA - United States", "GER - Germany"], ["USA - United States", "SCN - Scandinavia"], 
     ["GER - Germany", "SCN - Scandinavia"] 
 ];
+
+// ============================================================================
+// LISTAS DE POTES PARA O TOP GEAR 3000
+// ============================================================================
+
+// Sistemas TG3000
+$tg3k_all_systems = ["Merak", "Zosmar", "Sarin", "Alderam", "Kajam", "Lesath", "Miram", "Subrat", "Toygeta", "Vega_5", "Naosphein", "Kraz"];
+// Sistemas TG3000 COM 4 pistas
+$tg3k_4planet_systems = ["Zosmar", "Sarin", "Alderam", "Lesath", "Miram", "Subrat", "Vega_5"];
+
+// ============================================================================
+// LISTAS DE POTES PARA O TOP GEAR CENÁRIOS
+// ============================================================================
+
+// Potes Cenário 1
+$pot_cen1_a = ["06 SAM - Machu Picchu", "14 GER - Cologne", "17 SCN - Stockholm", "19 SCN - Helsinki", "21 FRA - Paris", "25 ITA - Pisa", "31 UKG - Loch Ness", "32 UKG - Stonehenge"];
+$pot_cen1_b = ["23 FRA - Bordeaux", "01 USA - Las Vegas", "10 JAP - Hiroshima", "04 USA - San Francisco", "05 SAM - Rio", "12 JAP - Kyoto"];
+
+$pot_cen1_c = ["07 SAM - Chichen Itza", "09 JAP - Tokyo", "13 GER - Munich", "15 GER - Black Forest", "16 GER - Frankfurt", "22 FRA - Nice", "26 ITA - Rome", "29 UKG - London"];
+
 
 // ============================================================================
 // DESCRIÇÕES DOS TORNEIOS
@@ -122,8 +141,6 @@ $tg2_descriptions_map = [
     204 => "Desafios temáticos e pistas insanas estilo Hot Wheels.",
     205 => "A taça dos campeões. Apenas a elite sobrevive aqui."
 ];
-
-$la_liga_ids = [3, 4, 5, 13, 14, 15]; // IDs do TG1 que são La Liga
 
 $tg3k_description_text = "Corridas interplanetárias no ano 3000. O futuro da velocidade.";
 

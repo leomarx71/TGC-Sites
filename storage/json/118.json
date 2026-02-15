@@ -1,14 +1,14 @@
 {
-    "id": 118,
-    "title": "T18 - Asia LeMans Series",
-    "lastUpdate": "2026-02-09 00:40:59",
-    "latestResult": {
-        "phase": "Rodada 0",
-        "drawnItems": [],
-        "date": "2026-02-09 00:40:59"
-    },
-    "usedItems": [
-        "01 - USA - Las Vegas"
-    ],
-    "roundCounter": 0
+  "id": 118,
+  "title": "T18 - Asia LeMans Series",
+  "lastUpdate": "",
+  "latestResult": {
+    "phase": "Rodada 0",
+    "drawnItems": [],
+    "date": ""
+  },
+  "usedItems": [
+    "NULL"
+  ],
+  "roundCounter": 0
 }

@@ -44,7 +44,7 @@ class Logger {
     }
 }
 
-// ... (Funções de renderização visual permanecem iguais abaixo) ...
+// ... (Funções de renderização visual) ...
 
 function render_button($id, $label, $onclick, $color = 'blue', $icon = null) {
     $colorClass = "bg-{$color}-600 hover:bg-{$color}-700";
@@ -64,19 +64,44 @@ function render_button($id, $label, $onclick, $color = 'blue', $icon = null) {
 
 function render_tournament_card($id, $title, $subtitle, $action_function) {
     // Definição das Fases e Cores
-    // Lógica condicional para Torneios 102 e 118 (Rodada única) vs Padrão
-    if ($id == 102 || $id == 118) {
+    // ESTRUTURA ATUALIZADA: 'title' agora é a SIGLA (F0, F1...) e 'label' é o NOME (Eliminatórias...)
+    $phases = [];
+
+    // CASO 1: Torneios de Rodadas (102, 118 e 106)
+    if ($id == 102 || $id == 118 || $id == 106) {
         $phases = [
-            ['label' => 'F6', 'title' => 'Rodada', 'color' => 'bg-purple-600 hover:bg-purple-500', 'text' => 'text-white']
+            ['title' => 'F6', 'label' => 'Rodada', 'color' => 'bg-purple-600 hover:bg-purple-500', 'text' => 'text-white']
         ];
-    } else {
+    } 
+    // CASO 2: Torneio 109 (Com 8° de Final)
+    elseif ($id == 109) {
         $phases = [
-            ['label' => 'F0', 'title' => 'Eliminatórias',  'color' => 'bg-slate-800 hover:bg-slate-700', 'text' => 'text-white'], 
-            ['label' => 'F1', 'title' => 'F. de Grupos',   'color' => 'bg-blue-500 hover:bg-blue-400',   'text' => 'text-white'], 
-            ['label' => 'F2', 'title' => '8° de Final',    'color' => 'bg-green-600 hover:bg-green-500', 'text' => 'text-white'], 
-            ['label' => 'F3', 'title' => '4° de Final',    'color' => 'bg-yellow-400 hover:bg-yellow-300', 'text' => 'text-yellow-900'], 
-            ['label' => 'F4', 'title' => 'Semifinal',      'color' => 'bg-orange-500 hover:bg-orange-400', 'text' => 'text-white'], 
-            ['label' => 'F5', 'title' => 'Final e 3°',     'color' => 'bg-red-600 hover:bg-red-500',    'text' => 'text-white']  
+            ['title' => 'F0', 'label' => 'Eliminatórias',  'color' => 'bg-slate-800 hover:bg-slate-700', 'text' => 'text-white'],
+            ['title' => 'F2', 'label' => '8° de Final',    'color' => 'bg-green-600 hover:bg-green-500', 'text' => 'text-white'], 
+            ['title' => 'F3', 'label' => '4° de Final',    'color' => 'bg-yellow-400 hover:bg-yellow-300', 'text' => 'text-yellow-900'], 
+            ['title' => 'F4', 'label' => 'Semifinal',      'color' => 'bg-orange-500 hover:bg-orange-400', 'text' => 'text-white'], 
+            ['title' => 'F5', 'label' => 'Final e 3°',     'color' => 'bg-red-600 hover:bg-red-500',    'text' => 'text-white']
+        ];
+    }
+    // CASO 3: Torneio 117 (Sem 8° de Final)
+    elseif ($id == 117) {
+        $phases = [
+            ['title' => 'F0', 'label' => 'Eliminatórias',  'color' => 'bg-slate-800 hover:bg-slate-700', 'text' => 'text-white'],
+            // Pula F2 (8° de Final)
+            ['title' => 'F3', 'label' => '4° de Final',    'color' => 'bg-yellow-400 hover:bg-yellow-300', 'text' => 'text-yellow-900'], 
+            ['title' => 'F4', 'label' => 'Semifinal',      'color' => 'bg-orange-500 hover:bg-orange-400', 'text' => 'text-white'], 
+            ['title' => 'F5', 'label' => 'Final e 3°',     'color' => 'bg-red-600 hover:bg-red-500',    'text' => 'text-white']
+        ];
+    }
+    // CASO 4: Padrão para os demais (Sem Eliminatórias, Com F1 e F2)
+    else {
+        $phases = [
+            // Pula F0
+            ['title' => 'F1', 'label' => 'F. de Grupos',   'color' => 'bg-blue-500 hover:bg-blue-400',   'text' => 'text-white'], 
+            ['title' => 'F2', 'label' => '8° de Final',    'color' => 'bg-green-600 hover:bg-green-500', 'text' => 'text-white'], 
+            ['title' => 'F3', 'label' => '4° de Final',    'color' => 'bg-yellow-400 hover:bg-yellow-300', 'text' => 'text-yellow-900'], 
+            ['title' => 'F4', 'label' => 'Semifinal',      'color' => 'bg-orange-500 hover:bg-orange-400', 'text' => 'text-white'], 
+            ['title' => 'F5', 'label' => 'Final e 3°',     'color' => 'bg-red-600 hover:bg-red-500',    'text' => 'text-white']  
         ];
     }
 
@@ -95,11 +120,11 @@ function render_tournament_card($id, $title, $subtitle, $action_function) {
                 ";
                 foreach ($phases as $idx => $p) {
                     echo "<button 
-                            onclick=\"app.selectPhase({$id}, {$idx}, '{$p['title']}')\" 
+                            onclick=\"app.selectPhase({$id}, {$idx}, '{$p['label']}')\" 
                             class='phase-btn-{$id} {$p['color']} {$p['text']} text-[10px] py-2 rounded shadow-sm font-bold transition-transform active:scale-95 border-2 border-transparent hover:border-white/30 truncate'
                             title='{$p['title']}'
-                            data-phase-name='{$p['title']}'>
-                            {$p['title']}
+                            data-phase-name='{$p['label']}'>
+                            {$p['label']}
                           </button>";
                 }
     echo "

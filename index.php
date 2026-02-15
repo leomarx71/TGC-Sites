@@ -168,9 +168,20 @@ $nav_tabs = [
                  
                 <!-- Histórico Global com Tabela de 5 Colunas -->
                 <div class="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden mt-6">
-                    <div class="bg-gray-50 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
-                        <h3 class="font-bold text-gray-700"><i class="fas fa-history mr-2"></i>Histórico Global de Sorteios</h3>
+                    <div class="bg-gray-50 px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <h3 class="font-bold text-gray-700 flex items-center"><i class="fas fa-history mr-2"></i>Histórico Global de Sorteios</h3>
+                        
+                        <!-- FILTRO ADICIONADO AQUI -->
+                        <div class="relative w-full sm:w-72">
+                            <span class="absolute inset-y-0 left-0 flex items-center pl-3">
+                                <i class="fas fa-search text-gray-400"></i>
+                            </span>
+                            <input type="text" id="history-filter" onkeyup="app.filterHistory()" 
+                                   class="w-full pl-10 pr-4 py-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm transition-all shadow-sm" 
+                                   placeholder="Filtrar (Torneio, Fase, Item...)">
+                        </div>
                     </div>
+                    
                     <div class="h-96 overflow-y-auto history-scroll">
                         <table class="min-w-full table-auto">
                             <thead class="bg-gray-100 text-gray-600 sticky top-0 shadow-sm z-10">
@@ -200,16 +211,12 @@ $nav_tabs = [
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <?php 
                     foreach ($tg1_tournaments as $t) {
+                        // Usa a função padrão que já suporta o ID 117
                         render_tournament_card($t['id'], $t['name'], $t['description'], "drawTG1");
                     }
                     ?>
                 </div>
-                <div class="mt-8 bg-white p-6 rounded-lg shadow">
-                    <h3 class="font-bold text-gray-700 mb-4">Ações</h3>
-                    <div class="flex gap-4">
-                        <?php render_button('btn-reset-tg1', 'Resetar TG1', 'app.resetTG1()', 'red', 'trash'); ?>
-                    </div>
-                </div>
+                <!-- Seção de Ações Removida -->
             </div>
 
             <!-- Tab: TG2 -->
@@ -427,21 +434,211 @@ $nav_tabs = [
             return { title: 'Desconhecido' };
         };
 
-        const getTiebreakerText = (phase, type, article) => {
+        const getTiebreakerText = (phase, type, article, tournamentId = null) => {
+            // Regra Especial para Torneio 109 em todas as fases
+            if (tournamentId && parseInt(tournamentId) === 109) {
+                return `<div class='mt-3 p-3 bg-blue-50 text-blue-800 text-xs rounded border border-blue-200 leading-snug flex items-start gap-2 shadow-sm'><i class="fas fa-info-circle mt-0.5 text-blue-600"></i><div><strong class="block mb-1 text-blue-700">Regra de Disputa:</strong> Jogo de Ida e Volta. O desempate é jogado com o carro proibido no país subsequente.</div></div>`;
+            }
+            
+            // --- REGRAS DO TORNEIO 110 ---
+            if (tournamentId && parseInt(tournamentId) === 110) {
+                if (phase.includes("F1") || phase.includes("Grupos")) {
+                    return `<div class='mt-3 p-3 bg-indigo-50 text-indigo-800 text-xs rounded border border-indigo-200 leading-snug flex items-start gap-2 shadow-sm'><i class="fas fa-car mt-0.5 text-indigo-600"></i><div><strong class="block mb-1 text-indigo-700">Regra de Veículo:</strong> Carro LIVRE na fases de grupo (com exceção do Proibido).</div></div>`;
+                }
+                if (phase.includes("F2") || phase.includes("8")) {
+                    return `<div class='mt-3 p-3 bg-purple-50 text-purple-800 text-xs rounded border border-purple-200 leading-snug flex items-start gap-2 shadow-sm'><i class="fas fa-car-side mt-0.5 text-purple-600"></i><div><strong class="block mb-1 text-purple-700">Regra de Veículo (8° de Final):</strong> Devem ser utilizados 2 (dois) carros na disputa, sendo um carro nas 7 primeiras pistas e outro nas 7 últimas pista (com exceção do Proibido).</div></div>`;
+                }
+                if (phase.includes("F3") || phase.includes("4")) {
+                    return `<div class='mt-3 p-3 bg-purple-50 text-purple-800 text-xs rounded border border-purple-200 leading-snug flex items-start gap-2 shadow-sm'><i class="fas fa-car-side mt-0.5 text-purple-600"></i><div><strong class="block mb-1 text-purple-700">Regra de Veículo (4° de Final):</strong> Devem ser utilizados 2 (dois) carros na disputa, sendo um carro nas 8 primeiras pistas e outro nas 8 últimas pista (com exceção do Proibido).</div></div>`;
+                }
+                if (phase.includes("F4") || phase.includes("Semifinal")) {
+                    return `<div class='mt-3 p-3 bg-blue-50 text-blue-800 text-xs rounded border border-blue-200 leading-snug flex items-start gap-2 shadow-sm'><i class="fas fa-car-side mt-0.5 text-blue-600"></i><div><strong class="block mb-1 text-blue-700">Regra de Veículo (Semifinal):</strong> Devem ser utilizados 3 (três) carros na disputa, sendo um carro a cada 7 pistas (com exceção do Proibido).</div></div>`;
+                }
+                if (phase.includes("F5") || phase.includes("Final")) {
+                    return `<div class='mt-3 p-3 bg-green-50 text-green-800 text-xs rounded border border-green-200 leading-snug flex items-start gap-2 shadow-sm'><i class="fas fa-flag-checkered mt-0.5 text-green-600"></i><div><strong class="block mb-1 text-green-700">Regra de Veículo (Final):</strong> Devem ser utilizados todos os 4 carros na disputa, sendo um carro a cada 6 pistas.</div></div>`;
+                }
+            }
+
+             // --- REGRAS DO TORNEIO 117 ---
+             if (tournamentId && parseInt(tournamentId) === 117) {
+                 if (phase === "F5" || phase === "Final e 3°") {
+                     return `<div class='mt-3 p-3 bg-green-50 text-green-800 text-xs rounded border border-green-200 leading-snug flex items-start gap-2 shadow-sm'><i class="fas fa-flag-checkered mt-0.5 text-green-600"></i><div><strong class="block mb-1 text-green-700">Regra de Veículo (Final):</strong> Devem ser utilizados todos os 4 carros na disputa, sendo um carro a cada 2 países e o desempate deve ser iniciado no país seguinte ao último sorteado.</div></div>`;
+                 }
+             }
+
             if (TIEBREAKER_PHASES.includes(phase)) {
-                return `<div class='mt-3 p-3 bg-yellow-50 text-yellow-800 text-xs rounded border border-yellow-200 leading-snug flex items-start gap-2 shadow-sm'><i class="fas fa-exclamation-triangle mt-0.5 text-yellow-600"></i><div><strong class="block mb-1 text-yellow-700">Regra de Desempate:</strong> O desempate deve ser iniciado n${article} ${type} seguinte ao último sorteado.</div></div>`;
+                return `<div class='mt-3 p-3 bg-yellow-50 text-yellow-800 text-xs rounded border border-yellow-200 leading-snug flex items-start gap-2 shadow-sm'><i class="fas fa-exclamation-triangle mt-0.5 text-yellow-600"></i><div><strong class="block mb-1 text-yellow-700">Regra de Desempate:</strong> O desempate deve ser iniciado na pista / país seguinte ao último sorteado.</div></div>`;
             }
             return "";
         };
 
-        const renderResultList = (phase, items, type) => {
+        const renderResultList = (phase, items, type, tournamentId = null) => {
+             // Lógica de separação visual para Torneio 110, Fase F2 (14 pistas)
+             if (tournamentId && parseInt(tournamentId) === 110 && (phase.includes("F2") || phase.includes("8"))) {
+                 let listHtml = '';
+                 
+                 // Grupo 1 (Primeiras 7)
+                 listHtml += '<div class="bg-gray-50 p-2 mb-2 rounded-t border-b border-gray-200"><span class="font-bold text-xs text-gray-500 uppercase">1° Carro (Pistas 1-7)</span></div>';
+                 listHtml += '<ul class="text-left text-sm space-y-1 font-mono text-gray-700 mb-4">';
+                 for(let i=0; i<7; i++) {
+                     if(items[i]) {
+                         listHtml += `<li class="border-b border-gray-100 last:border-0 pb-1 flex"><span class="font-bold text-indigo-600 w-8 inline-block text-right mr-2">${i + 1} -</span> <span>${items[i]}</span></li>`;
+                     }
+                 }
+                 listHtml += '</ul>';
+
+                 // Grupo 2 (Últimas 7)
+                 listHtml += '<div class="bg-gray-50 p-2 mb-2 rounded-t border-b border-gray-200 border-t"><span class="font-bold text-xs text-gray-500 uppercase">2° Carro (Pistas 8-14)</span></div>';
+                 listHtml += '<ul class="text-left text-sm space-y-1 font-mono text-gray-700">';
+                 for(let i=7; i<14; i++) {
+                     if(items[i]) {
+                         listHtml += `<li class="border-b border-gray-100 last:border-0 pb-1 flex"><span class="font-bold text-indigo-600 w-8 inline-block text-right mr-2">${i + 1} -</span> <span>${items[i]}</span></li>`;
+                     }
+                 }
+                 listHtml += '</ul>';
+
+                 let article = 'o(a)';
+                 if(type === 'país' || type === 'sistema') article = 'o';
+                 if(type === 'pista') article = 'a';
+                 return `<div class='flex flex-col gap-1 bg-white p-3 rounded border border-gray-200 shadow-sm'><div class='font-bold text-xs text-gray-500 uppercase border-b pb-2 mb-1 flex justify-between items-center bg-gray-50 -m-3 mb-2 p-3 rounded-t'><span>${phase}</span><span class="text-[10px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded font-bold uppercase tracking-wider">Grid Duplo</span></div>${listHtml}${getTiebreakerText(phase, type, article, tournamentId)}</div>`;
+             }
+
+             // Lógica de separação visual para Torneio 110, Fase F3 (16 pistas)
+             if (tournamentId && parseInt(tournamentId) === 110 && (phase.includes("F3") || phase.includes("4"))) {
+                 let listHtml = '';
+                 
+                 // Grupo 1 (Primeiras 8)
+                 listHtml += '<div class="bg-gray-50 p-2 mb-2 rounded-t border-b border-gray-200"><span class="font-bold text-xs text-gray-500 uppercase">1° Carro (Pistas 1-8)</span></div>';
+                 listHtml += '<ul class="text-left text-sm space-y-1 font-mono text-gray-700 mb-4">';
+                 for(let i=0; i<8; i++) {
+                     if(items[i]) {
+                         listHtml += `<li class="border-b border-gray-100 last:border-0 pb-1 flex"><span class="font-bold text-indigo-600 w-8 inline-block text-right mr-2">${i + 1} -</span> <span>${items[i]}</span></li>`;
+                     }
+                 }
+                 listHtml += '</ul>';
+
+                 // Grupo 2 (Últimas 8)
+                 listHtml += '<div class="bg-gray-50 p-2 mb-2 rounded-t border-b border-gray-200 border-t"><span class="font-bold text-xs text-gray-500 uppercase">2° Carro (Pistas 9-16)</span></div>';
+                 listHtml += '<ul class="text-left text-sm space-y-1 font-mono text-gray-700">';
+                 for(let i=8; i<16; i++) {
+                     if(items[i]) {
+                         listHtml += `<li class="border-b border-gray-100 last:border-0 pb-1 flex"><span class="font-bold text-indigo-600 w-8 inline-block text-right mr-2">${i + 1} -</span> <span>${items[i]}</span></li>`;
+                     }
+                 }
+                 listHtml += '</ul>';
+
+                 let article = 'o(a)';
+                 if(type === 'país' || type === 'sistema') article = 'o';
+                 if(type === 'pista') article = 'a';
+                 return `<div class='flex flex-col gap-1 bg-white p-3 rounded border border-gray-200 shadow-sm'><div class='font-bold text-xs text-gray-500 uppercase border-b pb-2 mb-1 flex justify-between items-center bg-gray-50 -m-3 mb-2 p-3 rounded-t'><span>${phase}</span><span class="text-[10px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded font-bold uppercase tracking-wider">Grid Duplo</span></div>${listHtml}${getTiebreakerText(phase, type, article, tournamentId)}</div>`;
+             }
+
+             // Lógica de separação visual para Torneio 110, Fase F4 (21 pistas - 3 carros)
+             if (tournamentId && parseInt(tournamentId) === 110 && (phase.includes("F4") || phase.includes("Semifinal"))) {
+                 let listHtml = '';
+                 
+                 // Grupo 1
+                 listHtml += '<div class="bg-gray-50 p-2 mb-2 rounded-t border-b border-gray-200"><span class="font-bold text-xs text-gray-500 uppercase">1° Carro (Pistas 1-7)</span></div>';
+                 listHtml += '<ul class="text-left text-sm space-y-1 font-mono text-gray-700 mb-4">';
+                 for(let i=0; i<7; i++) { if(items[i]) listHtml += `<li class="border-b border-gray-100 last:border-0 pb-1 flex"><span class="font-bold text-indigo-600 w-8 inline-block text-right mr-2">${i + 1} -</span> <span>${items[i]}</span></li>`; }
+                 listHtml += '</ul>';
+
+                 // Grupo 2
+                 listHtml += '<div class="bg-gray-50 p-2 mb-2 rounded-t border-b border-gray-200 border-t"><span class="font-bold text-xs text-gray-500 uppercase">2° Carro (Pistas 8-14)</span></div>';
+                 listHtml += '<ul class="text-left text-sm space-y-1 font-mono text-gray-700 mb-4">';
+                 for(let i=7; i<14; i++) { if(items[i]) listHtml += `<li class="border-b border-gray-100 last:border-0 pb-1 flex"><span class="font-bold text-indigo-600 w-8 inline-block text-right mr-2">${i + 1} -</span> <span>${items[i]}</span></li>`; }
+                 listHtml += '</ul>';
+
+                 // Grupo 3
+                 listHtml += '<div class="bg-gray-50 p-2 mb-2 rounded-t border-b border-gray-200 border-t"><span class="font-bold text-xs text-gray-500 uppercase">3° Carro (Pistas 15-21)</span></div>';
+                 listHtml += '<ul class="text-left text-sm space-y-1 font-mono text-gray-700">';
+                 for(let i=14; i<21; i++) { if(items[i]) listHtml += `<li class="border-b border-gray-100 last:border-0 pb-1 flex"><span class="font-bold text-indigo-600 w-8 inline-block text-right mr-2">${i + 1} -</span> <span>${items[i]}</span></li>`; }
+                 listHtml += '</ul>';
+
+                 let article = 'o(a)';
+                 if(type === 'país' || type === 'sistema') article = 'o';
+                 if(type === 'pista') article = 'a';
+                 return `<div class='flex flex-col gap-1 bg-white p-3 rounded border border-gray-200 shadow-sm'><div class='font-bold text-xs text-gray-500 uppercase border-b pb-2 mb-1 flex justify-between items-center bg-gray-50 -m-3 mb-2 p-3 rounded-t'><span>${phase}</span><span class="text-[10px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded font-bold uppercase tracking-wider">Grid Triplo</span></div>${listHtml}${getTiebreakerText(phase, type, article, tournamentId)}</div>`;
+             }
+
+             // Lógica de separação visual para Torneio 110, Fase F5 (24 pistas - 4 carros)
+             if (tournamentId && parseInt(tournamentId) === 110 && (phase.includes("F5") || phase.includes("Final"))) {
+                 let listHtml = '';
+                 
+                 // Grupo 1
+                 listHtml += '<div class="bg-gray-50 p-2 mb-2 rounded-t border-b border-gray-200"><span class="font-bold text-xs text-gray-500 uppercase">1° Carro (Pistas 1-6)</span></div>';
+                 listHtml += '<ul class="text-left text-sm space-y-1 font-mono text-gray-700 mb-4">';
+                 for(let i=0; i<6; i++) { if(items[i]) listHtml += `<li class="border-b border-gray-100 last:border-0 pb-1 flex"><span class="font-bold text-indigo-600 w-8 inline-block text-right mr-2">${i + 1} -</span> <span>${items[i]}</span></li>`; }
+                 listHtml += '</ul>';
+
+                 // Grupo 2
+                 listHtml += '<div class="bg-gray-50 p-2 mb-2 rounded-t border-b border-gray-200 border-t"><span class="font-bold text-xs text-gray-500 uppercase">2° Carro (Pistas 7-12)</span></div>';
+                 listHtml += '<ul class="text-left text-sm space-y-1 font-mono text-gray-700 mb-4">';
+                 for(let i=6; i<12; i++) { if(items[i]) listHtml += `<li class="border-b border-gray-100 last:border-0 pb-1 flex"><span class="font-bold text-indigo-600 w-8 inline-block text-right mr-2">${i + 1} -</span> <span>${items[i]}</span></li>`; }
+                 listHtml += '</ul>';
+
+                 // Grupo 3
+                 listHtml += '<div class="bg-gray-50 p-2 mb-2 rounded-t border-b border-gray-200 border-t"><span class="font-bold text-xs text-gray-500 uppercase">3° Carro (Pistas 13-18)</span></div>';
+                 listHtml += '<ul class="text-left text-sm space-y-1 font-mono text-gray-700 mb-4">';
+                 for(let i=12; i<18; i++) { if(items[i]) listHtml += `<li class="border-b border-gray-100 last:border-0 pb-1 flex"><span class="font-bold text-indigo-600 w-8 inline-block text-right mr-2">${i + 1} -</span> <span>${items[i]}</span></li>`; }
+                 listHtml += '</ul>';
+
+                 // Grupo 4
+                 listHtml += '<div class="bg-gray-50 p-2 mb-2 rounded-t border-b border-gray-200 border-t"><span class="font-bold text-xs text-gray-500 uppercase">4° Carro (Pistas 19-24)</span></div>';
+                 listHtml += '<ul class="text-left text-sm space-y-1 font-mono text-gray-700">';
+                 for(let i=18; i<24; i++) { if(items[i]) listHtml += `<li class="border-b border-gray-100 last:border-0 pb-1 flex"><span class="font-bold text-indigo-600 w-8 inline-block text-right mr-2">${i + 1} -</span> <span>${items[i]}</span></li>`; }
+                 listHtml += '</ul>';
+
+                 let article = 'o(a)';
+                 if(type === 'país' || type === 'sistema') article = 'o';
+                 if(type === 'pista') article = 'a';
+                 return `<div class='flex flex-col gap-1 bg-white p-3 rounded border border-gray-200 shadow-sm'><div class='font-bold text-xs text-gray-500 uppercase border-b pb-2 mb-1 flex justify-between items-center bg-gray-50 -m-3 mb-2 p-3 rounded-t'><span>${phase}</span><span class="text-[10px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded font-bold uppercase tracking-wider">Grid Quádruplo</span></div>${listHtml}${getTiebreakerText(phase, type, article, tournamentId)}</div>`;
+             }
+
+             // Lógica de separação visual para Torneio 117, Fase F5 (8 países sequenciais)
+             if (tournamentId && parseInt(tournamentId) === 117 && (phase.includes("F5") )) {
+                 let listHtml = '';
+                 
+                 // Grupo 1
+                 listHtml += '<div class="bg-gray-50 p-2 mb-2 rounded-t border-b border-gray-200"><span class="font-bold text-xs text-gray-500 uppercase">1° Carro (Países 1-2)</span></div>';
+                 listHtml += '<ul class="text-left text-sm space-y-1 font-mono text-gray-700 mb-4">';
+                 for(let i=0; i<2; i++) { if(items[i]) listHtml += `<li class="border-b border-gray-100 last:border-0 pb-1 flex"><span class="font-bold text-indigo-600 w-8 inline-block text-right mr-2">${i + 1} -</span> <span>${items[i]}</span></li>`; }
+                 listHtml += '</ul>';
+
+                 // Grupo 2
+                 listHtml += '<div class="bg-gray-50 p-2 mb-2 rounded-t border-b border-gray-200 border-t"><span class="font-bold text-xs text-gray-500 uppercase">2° Carro (Países 3-4)</span></div>';
+                 listHtml += '<ul class="text-left text-sm space-y-1 font-mono text-gray-700 mb-4">';
+                 for(let i=2; i<4; i++) { if(items[i]) listHtml += `<li class="border-b border-gray-100 last:border-0 pb-1 flex"><span class="font-bold text-indigo-600 w-8 inline-block text-right mr-2">${i + 1} -</span> <span>${items[i]}</span></li>`; }
+                 listHtml += '</ul>';
+
+                 // Grupo 3
+                 listHtml += '<div class="bg-gray-50 p-2 mb-2 rounded-t border-b border-gray-200 border-t"><span class="font-bold text-xs text-gray-500 uppercase">3° Carro (Países 5-6)</span></div>';
+                 listHtml += '<ul class="text-left text-sm space-y-1 font-mono text-gray-700 mb-4">';
+                 for(let i=4; i<6; i++) { if(items[i]) listHtml += `<li class="border-b border-gray-100 last:border-0 pb-1 flex"><span class="font-bold text-indigo-600 w-8 inline-block text-right mr-2">${i + 1} -</span> <span>${items[i]}</span></li>`; }
+                 listHtml += '</ul>';
+
+                 // Grupo 4
+                 listHtml += '<div class="bg-gray-50 p-2 mb-2 rounded-t border-b border-gray-200 border-t"><span class="font-bold text-xs text-gray-500 uppercase">4° Carro (Países 7-8)</span></div>';
+                 listHtml += '<ul class="text-left text-sm space-y-1 font-mono text-gray-700">';
+                 for(let i=6; i<8; i++) { if(items[i]) listHtml += `<li class="border-b border-gray-100 last:border-0 pb-1 flex"><span class="font-bold text-indigo-600 w-8 inline-block text-right mr-2">${i + 1} -</span> <span>${items[i]}</span></li>`; }
+                 listHtml += '</ul>';
+
+                 let article = 'o(a)';
+                 if(type === 'país' || type === 'sistema') article = 'o';
+                 if(type === 'pista') article = 'a';
+                 return `<div class='flex flex-col gap-1 bg-white p-3 rounded border border-gray-200 shadow-sm'><div class='font-bold text-xs text-gray-500 uppercase border-b pb-2 mb-1 flex justify-between items-center bg-gray-50 -m-3 mb-2 p-3 rounded-t'><span>${phase}</span><span class="text-[10px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded font-bold uppercase tracking-wider">Grid Quádruplo</span></div>${listHtml}${getTiebreakerText(phase, type, article, tournamentId)}</div>`;
+             }
+
+             // Padrão
              let listHtml = '<ul class="text-left text-sm space-y-1 font-mono text-gray-700">';
              items.forEach((t, i) => listHtml += `<li class="border-b border-gray-100 last:border-0 pb-1 flex"><span class="font-bold text-indigo-600 w-8 inline-block text-right mr-2">${i + 1} -</span> <span>${t}</span></li>`);
              listHtml += '</ul>';
              let article = 'o(a)';
              if(type === 'país' || type === 'sistema') article = 'o';
              if(type === 'pista') article = 'a';
-             return `<div class='flex flex-col gap-3 bg-white p-3 rounded border border-gray-200 shadow-sm'><div class='font-bold text-xs text-gray-500 uppercase border-b pb-2 mb-1 flex justify-between items-center bg-gray-50 -m-3 mb-2 p-3 rounded-t'><span>${phase}</span><span class="text-[10px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded font-bold uppercase tracking-wider">Grid de Largada</span></div>${listHtml}${getTiebreakerText(phase, type, article)}</div>`;
+             
+             // Passa o tournamentId para o getTiebreakerText
+             return `<div class='flex flex-col gap-3 bg-white p-3 rounded border border-gray-200 shadow-sm'><div class='font-bold text-xs text-gray-500 uppercase border-b pb-2 mb-1 flex justify-between items-center bg-gray-50 -m-3 mb-2 p-3 rounded-t'><span>${phase}</span><span class="text-[10px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded font-bold uppercase tracking-wider">Grid de Largada</span></div>${listHtml}${getTiebreakerText(phase, type, article, tournamentId)}</div>`;
         };
 
         const selectPhase = (tournamentId, phaseIndex, phaseTitle) => {
@@ -481,6 +678,9 @@ $nav_tabs = [
                             `;
                             tbody.appendChild(tr);
                         });
+                        // Aplica filtro se já houver texto
+                        const currentFilter = document.getElementById('history-filter').value;
+                        if(currentFilter) app.filterHistory();
                     } else {
                         tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-8 text-center text-gray-400 italic">Nenhum histórico encontrado.</td></tr>';
                     }
@@ -506,7 +706,7 @@ $nav_tabs = [
             }
 
             // --- LÓGICA DE DECISÃO: SERVER-SIDE VS CLIENT-SIDE ---
-            if (id == 102 || id == 118) {
+            if (id == 102 || id == 118 || id == 106 || [101, 107, 112, 116, 109, 110, 117].includes(parseInt(id))) {
                 // Sorteio Server-Side (Regras complexas: Países, Stonehenge, Pote Cíclico)
                 const payload = {
                     tournamentId: id,
@@ -523,8 +723,8 @@ $nav_tabs = [
                 .then(data => {
                     if (data.status === 'success') {
                          resultBox.classList.remove('hidden');
-                         // Usa a fase retornada pela API que contém o contador correto (ex: Rodada 2)
-                         resultBox.innerHTML = renderResultList(data.phase || phase, data.data, itemType);
+                         // Passa ID para renderResultList para tratar msg 109
+                         resultBox.innerHTML = renderResultList(data.phase || phase, data.data, itemType, id);
                          logSystem(`Sorteio #${id} realizado e salvo (Server-Side).`, "SUCCESS");
                          loadGlobalHistory();
                          confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 } });
@@ -551,7 +751,8 @@ $nav_tabs = [
                 setTimeout(() => {
                     const selectedItems = getRandomItems(pool, count);
                     resultBox.classList.remove('hidden');
-                    resultBox.innerHTML = renderResultList(phase, selectedItems, itemType);
+                    // Passa ID para renderResultList para tratar msg 109 (caso caia aqui por erro de config)
+                    resultBox.innerHTML = renderResultList(phase, selectedItems, itemType, id);
                     
                     const payload = {
                         tournamentId: id,
@@ -728,7 +929,23 @@ $nav_tabs = [
             checkLogin, switchTab, drawTG1, drawTG2, drawTG3K, drawCenario, drawForbiddenCar, toggleCarBan, selectPhase, loadGlobalHistory, checkForbiddenButton,
             refreshSystem: () => window.location.reload(),
             resetTG1: () => logSystem('Reset TG1 acionado'),
-            backupGlobal: () => alert('Backup solicitado (Simulação)')
+            backupGlobal: () => alert('Backup solicitado (Simulação)'),
+            // Função de Filtro
+            filterHistory: () => {
+                const input = document.getElementById('history-filter');
+                const filter = input.value.toUpperCase();
+                const table = document.getElementById('global-history-table-body');
+                const tr = table.getElementsByTagName('tr');
+
+                for (let i = 0; i < tr.length; i++) {
+                    const txtValue = tr[i].textContent || tr[i].innerText;
+                    if (txtValue.toUpperCase().indexOf(filter) > -1) {
+                        tr[i].style.display = "";
+                    } else {
+                        tr[i].style.display = "none";
+                    }
+                }
+            }
         };
     </script>
 </body>
