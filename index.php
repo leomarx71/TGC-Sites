@@ -188,12 +188,16 @@ $nav_tabs = [
                 <div class="bg-white rounded-xl shadow-lg border border-gray-100 p-4">
                     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <h3 class="font-bold text-gray-700 flex items-center"><i class="fas fa-gears mr-2"></i>Gestão do Sistema</h3>
-                        <div class="flex gap-2">
+                        <div class="flex flex-wrap gap-2">
                             <button onclick="app.createBackup()" class="admin-tools-btn px-4 py-2 rounded-lg font-semibold text-sm shadow"><i class="fas fa-box-archive mr-2"></i>Criar Backup</button>
+                            <button onclick="app.viewBackups()" class="bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded-lg font-semibold text-sm shadow"><i class="fas fa-folder-open mr-2"></i>Visualizar Backups</button>
+                            <button onclick="app.clearLogs()" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg font-semibold text-sm shadow"><i class="fas fa-broom mr-2"></i>Limpar Logs</button>
+                            <button onclick="app.resetSeason()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold text-sm shadow"><i class="fas fa-triangle-exclamation mr-2"></i>Resetar Temporada</button>
                             <button onclick="app.loadGlobalHistory()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-semibold text-sm shadow"><i class="fas fa-rotate mr-2"></i>Atualizar Histórico</button>
                         </div>
                     </div>
                     <p id="backup-status" class="mt-3 text-sm text-gray-600"></p>
+                    <div id="backup-list" class="mt-3"></div>
                 </div>
 
                 <div class="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden mt-6">
@@ -470,11 +474,15 @@ $nav_tabs = [
             return { title: 'Desconhecido' };
         };
 
-        const createBackup = () => {
+        const createBackupLegacy = () => {
             const status = document.getElementById('backup-status');
             if (status) status.textContent = 'Gerando backup...';
 
-            fetch('api/CreateBackup.php', { method: 'POST' })
+            fetch('api/AdminMaintenance.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'create_backup' })
+            })
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 'success') {
@@ -488,6 +496,173 @@ $nav_tabs = [
                 .catch(() => {
                     if (status) status.textContent = 'Erro de conexão ao criar backup.';
                     logSystem('Erro de conexão ao criar backup.', "ERROR");
+                });
+        };
+
+        const escapeHtml = (value) => {
+            return String(value ?? '')
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#39;');
+        };
+
+        const callAdminMaintenance = async (action, payload = {}) => {
+            const response = await fetch('api/AdminMaintenance.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, ...payload })
+            });
+
+            let data;
+            try {
+                data = await response.json();
+            } catch (_error) {
+                throw new Error('Resposta invalida do servidor.');
+            }
+
+            if (!response.ok || data.status !== 'success') {
+                throw new Error(data.message || 'Falha na operacao solicitada.');
+            }
+
+            return data;
+        };
+
+        const renderBackupList = (backups) => {
+            const container = document.getElementById('backup-list');
+            if (!container) return;
+
+            if (!Array.isArray(backups) || backups.length === 0) {
+                container.innerHTML = '<div class="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">Nenhum backup encontrado.</div>';
+                return;
+            }
+
+            const rows = backups.map((item) => {
+                const filename = escapeHtml(item.filename || 'arquivo.zip');
+                const created = escapeHtml(item.created_at || 'N/D');
+                const size = escapeHtml(item.size_human || '0 B');
+                const downloadUrl = escapeHtml(item.download_url || '#');
+
+                return `
+                    <tr class="border-b border-gray-100 last:border-0">
+                        <td class="px-3 py-2 text-xs font-mono text-gray-700">${created}</td>
+                        <td class="px-3 py-2 text-sm text-gray-800">${filename}</td>
+                        <td class="px-3 py-2 text-xs text-gray-600">${size}</td>
+                        <td class="px-3 py-2 text-right">
+                            <a href="${downloadUrl}" download="${filename}" class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-1 text-xs font-semibold text-white hover:bg-indigo-700">
+                                Baixar
+                            </a>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            container.innerHTML = `
+                <div class="rounded-lg border border-gray-200 overflow-hidden">
+                    <div class="bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-700">Backups disponiveis (${backups.length})</div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full">
+                            <thead class="bg-white text-gray-500 text-xs uppercase">
+                                <tr>
+                                    <th class="px-3 py-2 text-left">Criado em</th>
+                                    <th class="px-3 py-2 text-left">Arquivo</th>
+                                    <th class="px-3 py-2 text-left">Tamanho</th>
+                                    <th class="px-3 py-2 text-right">Acao</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white">${rows}</tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        };
+
+        const viewBackups = () => {
+            const status = document.getElementById('backup-status');
+            if (status) status.textContent = 'Carregando lista de backups...';
+
+            callAdminMaintenance('list_backups')
+                .then((data) => {
+                    renderBackupList(data.backups || []);
+                    if (status) status.textContent = `Lista de backups atualizada (${data.total || 0} arquivo(s)).`;
+                    logSystem('Lista de backups atualizada.', 'INFO');
+                })
+                .catch((error) => {
+                    if (status) status.textContent = `Erro ao listar backups: ${error.message}`;
+                    logSystem(`Erro ao listar backups: ${error.message}`, 'ERROR');
+                });
+        };
+
+        const createBackup = () => {
+            const status = document.getElementById('backup-status');
+            if (status) status.textContent = 'Gerando backup...';
+
+            callAdminMaintenance('create_backup')
+                .then((data) => {
+                    if (status) status.innerHTML = `Backup criado: <span class="font-semibold">${escapeHtml(data.filename)}</span> (${data.files_count} arquivo(s))`;
+                    logSystem(`Backup criado: ${data.filename}`, 'SUCCESS');
+                    viewBackups();
+                })
+                .catch((error) => {
+                    if (status) status.textContent = `Erro no backup: ${error.message}`;
+                    logSystem(`Erro no backup: ${error.message}`, 'ERROR');
+                });
+        };
+
+        const clearLogs = () => {
+            const status = document.getElementById('backup-status');
+
+            if (!confirm('Esta acao limpa o arquivo de log do sistema. Deseja continuar?')) {
+                return;
+            }
+
+            const confirmation = prompt('Digite LIMPAR_LOGS para confirmar a limpeza dos logs:');
+            if (confirmation !== 'LIMPAR_LOGS') {
+                if (status) status.textContent = 'Limpeza de logs cancelada.';
+                return;
+            }
+
+            if (status) status.textContent = 'Limpando logs...';
+
+            callAdminMaintenance('clear_logs', { confirm: true, confirmation_text: confirmation })
+                .then((data) => {
+                    if (status) status.textContent = `Logs limpos com sucesso (${data.bytes_removed || 0} bytes removidos).`;
+                    logSystem('Logs do servidor limpos.', 'WARNING');
+                })
+                .catch((error) => {
+                    if (status) status.textContent = `Erro ao limpar logs: ${error.message}`;
+                    logSystem(`Erro ao limpar logs: ${error.message}`, 'ERROR');
+                });
+        };
+
+        const resetSeason = () => {
+            const status = document.getElementById('backup-status');
+
+            if (!confirm('Esta acao vai resetar a temporada e limpar historicos. Um backup sera criado antes do reset. Deseja continuar?')) {
+                return;
+            }
+
+            const confirmation = prompt('Digite RESETAR_TEMPORADA para confirmar o reset completo:');
+            if (confirmation !== 'RESETAR_TEMPORADA') {
+                if (status) status.textContent = 'Reset de temporada cancelado.';
+                return;
+            }
+
+            if (status) status.textContent = 'Executando reset da temporada...';
+
+            callAdminMaintenance('reset_season', { confirm: true, confirmation_text: confirmation })
+                .then((data) => {
+                    if (status) {
+                        status.innerHTML = `Temporada resetada com sucesso. Backup: <span class="font-semibold">${escapeHtml(data.backup_file || 'N/D')}</span>.`;
+                    }
+                    logSystem('Temporada resetada com sucesso.', 'WARNING');
+                    loadGlobalHistory();
+                    viewBackups();
+                })
+                .catch((error) => {
+                    if (status) status.textContent = `Erro ao resetar temporada: ${error.message}`;
+                    logSystem(`Erro ao resetar temporada: ${error.message}`, 'ERROR');
                 });
         };
 
@@ -1216,6 +1391,7 @@ $nav_tabs = [
             renderForbiddenWheel();
             checkForbiddenButton();
             loadGlobalHistory(); 
+            viewBackups();
         };
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -1223,9 +1399,8 @@ $nav_tabs = [
         });
 
         window.app = {
-            checkLogin, switchTab, drawTG1, drawTG2, drawTG3K, drawCenario, drawForbiddenCar, toggleCarBan, selectPhase, loadGlobalHistory, checkForbiddenButton, sortearRepeticoes405, sortearPista405, createBackup,
+            checkLogin, switchTab, drawTG1, drawTG2, drawTG3K, drawCenario, drawForbiddenCar, toggleCarBan, selectPhase, loadGlobalHistory, checkForbiddenButton, sortearRepeticoes405, sortearPista405, createBackup, viewBackups, clearLogs, resetSeason,
             refreshSystem: () => window.location.reload(),
-            resetTG1: () => logSystem('Reset TG1 acionado'),
             backupGlobal: createBackup,
             // Função de Filtro
             filterHistory: () => {

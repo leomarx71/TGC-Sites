@@ -37,7 +37,7 @@ if (DEBUG_MODE) {
 }
 
 // Versão do sistema
-define('APP_VERSION', '1.4');
+define('APP_VERSION', '1.5');
 define('APP_NAME', 'TGC Manager - Sistema de Sorteios');
 
 // ============================================================================
