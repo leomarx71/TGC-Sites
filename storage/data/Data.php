@@ -12,7 +12,7 @@ $cars_global = [
     ['id' => 'p2_1', 'name' => 'Weasel', 'class' => 'X', 'banned' => true, 'color' => 'text-blue-600', 'color_name' => 'Azul'],
     ['id' => 'p3_1', 'name' => 'Razor', 'class' => 'X', 'banned' => true, 'color' => 'text-purple-600', 'color_name' => 'Roxo'],
     ['id' => 'p4_1', 'name' => 'Sidewinder', 'class' => 'X', 'banned' => true, 'color' => 'text-gray-400', 'color_name' => 'Branco'],
-    
+
     // Grupo 2
     ['id' => 'p1_2', 'name' => 'Cannibal', 'class' => 'X', 'banned' => true, 'color' => 'text-red-600', 'color_name' => 'Vermelho'],
     ['id' => 'p2_2', 'name' => 'Weasel', 'class' => 'X', 'banned' => true, 'color' => 'text-blue-600', 'color_name' => 'Azul'],
@@ -33,7 +33,7 @@ $cars_global = [
 // Pistas TG1 (32 Pistas) - Atualizado conforme solicitação (Ordem ITA ajustada)
 $tracks_tg1 = [
     '01 - USA - Las Vegas', '02 - USA - Los Angeles', '03 - USA - New York', '04 - USA - San Francisco',
-    '05 - SAM - Rio de Janeiro', '06 - SAM - Machu Picchu', '07 - SAM - Chichén Itza', '08 - SAM - Floresta A.',
+    '05 - SAM - Rio de Janeiro', '06 - SAM - Machu Picchu', '07 - SAM - Chichén Itzá', '08 - SAM - Floresta A.',
     '09 - JAP - Tokyo', '10 - JAP - Hiroshima', '11 - JAP - Yokohama', '12 - JAP - Kyoto',
     '13 - GER - Munich', '14 - GER - Cologne', '15 - GER - Black Forest', '16 - GER - Frankfurt',
     '17 - SCN - Stockholm', '18 - SCN - Copenhagen', '19 - SCN - Helsinki', '20 - SCN - Oslo',
@@ -48,19 +48,19 @@ $countries_tg1 = [
 ];
 
 $tracks_110_pit = [
-    "04 USA - San Francisco", "05 SAM - Rio", "07 SAM - Chichen Itza", 
-    "09 JAP - Tokyo", "10 JAP - Hiroshima", "12 JAP - Kyoto", 
-    "13 GER - Munich", "15 GER - Black Forest", "16 GER - Frankfurt", 
+    "04 USA - San Francisco", "05 SAM - Rio", "07 SAM - Chichen Itza",
+    "09 JAP - Tokyo", "10 JAP - Hiroshima", "12 JAP - Kyoto",
+    "13 GER - Munich", "15 GER - Black Forest", "16 GER - Frankfurt",
     "22 FRA - Nice", "23 FRA - Bordeaux", "26 ITA - Rome", "29 UKG - London"
 ];
 
 $tracks_110_nopit = [
-    "01 USA - Las Vegas", "02 USA - Los Angeles", "03 USA - New York", 
-    "06 SAM - Machu Picchu", "08 SAM - Rain Forest", "11 JAP - Yokohama", 
-    "14 GER - Cologne", "17 SCN - Stockholm", "18 SCN - Copenhagen", 
-    "19 SCN - Helsinki", "20 SCN - Oslo", "21 FRA - Paris", 
-    "24 FRA - Monaco", "25 ITA - Pisa", "27 ITA - Sicily", 
-    "28 ITA - Florence", "30 UKG - Sheffield", "31 UKG - Loch Ness", 
+    "01 USA - Las Vegas", "02 USA - Los Angeles", "03 USA - New York",
+    "06 SAM - Machu Picchu", "08 SAM - Rain Forest", "11 JAP - Yokohama",
+    "14 GER - Cologne", "17 SCN - Stockholm", "18 SCN - Copenhagen",
+    "19 SCN - Helsinki", "20 SCN - Oslo", "21 FRA - Paris",
+    "24 FRA - Monaco", "25 ITA - Pisa", "27 ITA - Sicily",
+    "28 ITA - Florence", "30 UKG - Sheffield", "31 UKG - Loch Ness",
     "32 UKG - Stonehenge"
 ];
 
@@ -70,23 +70,25 @@ $tracks_110_nopit = [
 
 // Top Gear 2 - Países e Pares
 $tg2_countries = [
-    "AUS - Australasia", "UKG - Britain", "CAN - Canada", "EGY - Egypt", 
-    "FRA - France", "GER - Germany", "GRE - Greece", "IND - India", 
-    "IRL - Ireland", "ITA - Italy", "JAP - Japan", "SCN - Scandinavia", 
+    "AUS - Australasia", "UKG - Britain", "CAN - Canada", "EGY - Egypt",
+    "FRA - France", "GER - Germany", "GRE - Greece", "IND - India",
+    "IRL - Ireland", "ITA - Italy", "JAP - Japan", "SCN - Scandinavia",
     "SAM - South America", "ESP - Spain", "SUI - Switzerland", "USA - United States"
 ];
 
-$tg2_country_pairs = [ 
-    ["UKG - Britain", "FRA - France"], ["UKG - Britain", "JAP - Japan"], ["UKG - Britain", "SAM - South America"], 
-    ["UKG - Britain", "ITA - Italy"], ["UKG - Britain", "USA - United States"], ["UKG - Britain", "GER - Germany"], 
-    ["UKG - Britain", "SCN - Scandinavia"], ["FRA - France", "JAP - Japan"], ["FRA - France", "SAM - South America"], 
-    ["FRA - France", "ITA - Italy"], ["FRA - France", "USA - United States"], ["FRA - France", "GER - Germany"], 
-    ["FRA - France", "SCN - Scandinavia"], ["JAP - Japan", "SAM - South America"], ["JAP - Japan", "ITA - Italy"], 
-    ["JAP - Japan", "USA - United States"], ["JAP - Japan", "GER - Germany"], ["JAP - Japan", "SCN - Scandinavia"], 
-    ["SAM - South America", "ITA - Italy"], ["SAM - South America", "USA - United States"], ["SAM - South America", "GER - Germany"], 
-    ["SAM - South America", "SCN - Scandinavia"], ["ITA - Italy", "USA - United States"], ["ITA - Italy", "GER - Germany"], 
-    ["ITA - Italy", "SCN - Scandinavia"], ["USA - United States", "GER - Germany"], ["USA - United States", "SCN - Scandinavia"], 
-    ["GER - Germany", "SCN - Scandinavia"] 
+$tg2_cenarios_pool = ["Cenário 1", "Cenário 2", "Cenário 3", "Cenário 5", "Cenário 6"];
+
+$tg2_country_pairs = [
+    ["UKG - Britain", "FRA - France"], ["UKG - Britain", "JAP - Japan"], ["UKG - Britain", "SAM - South America"],
+    ["UKG - Britain", "ITA - Italy"], ["UKG - Britain", "USA - United States"], ["UKG - Britain", "GER - Germany"],
+    ["UKG - Britain", "SCN - Scandinavia"], ["FRA - France", "JAP - Japan"], ["FRA - France", "SAM - South America"],
+    ["FRA - France", "ITA - Italy"], ["FRA - France", "USA - United States"], ["FRA - France", "GER - Germany"],
+    ["FRA - France", "SCN - Scandinavia"], ["JAP - Japan", "SAM - South America"], ["JAP - Japan", "ITA - Italy"],
+    ["JAP - Japan", "USA - United States"], ["JAP - Japan", "GER - Germany"], ["JAP - Japan", "SCN - Scandinavia"],
+    ["SAM - South America", "ITA - Italy"], ["SAM - South America", "USA - United States"], ["SAM - South America", "GER - Germany"],
+    ["SAM - South America", "SCN - Scandinavia"], ["ITA - Italy", "USA - United States"], ["ITA - Italy", "GER - Germany"],
+    ["ITA - Italy", "SCN - Scandinavia"], ["USA - United States", "GER - Germany"], ["USA - United States", "SCN - Scandinavia"],
+    ["GER - Germany", "SCN - Scandinavia"]
 ];
 
 // ============================================================================
@@ -109,7 +111,7 @@ $pot_cenarios_full = [
     '03 - USA - New York' => 3,
     '04 - USA - San Francisco' => 7,
     '05 - SAM - Rio de Janeiro' => 7,
-    '06 - SAM - Machu Pichu' => 1,
+    '06 - SAM - Machu Picchu' => 1,
     '07 - SAM - Chichén Itzá' => 8,
     '08 - SAM - Floresta A' => 3,
     '09 - JAP - Tóquio' => 9,
@@ -247,7 +249,7 @@ $tg1_descriptions_map = [
     "T9" => "A copa mais cobiçada do circuito TGC. Duelos de Ida e Volta com Carro Livre ou Proibido.",
     "T10" => "Um desafio matemático e estratégia onde cada posição conta. Regras especiais de Pit Stop e Carro Proibido.",
     "T11" => "Protótipos velozes testando os limites da engenharia a 767 Km/h.",
-    "T12" => "Gelo, neve e controle absoluto no rali ártico. Derrapou morreu! Sorteio de Países.",
+    "T12" => "Gelo, neve e controle absoluto no rali Ártico. Derrapou morreu! Sorteio de Países.",
     "T13" => "A batalha pelo ouro recomeça com novos rivais. Formato Liga.",
     "T14" => "A prata brilha, mas o objetivo é o topo. Formato Liga.",
     "T15" => "Bronze com sabor de vitória para os iniciantes. Formato Liga.",
@@ -257,11 +259,12 @@ $tg1_descriptions_map = [
 ];
 
 $tg2_descriptions_map = [
-    201 => "Corrida de resistência e velocidade inspirada na Nascar.",
-    202 => "A liga definitiva de turismo para os pilotos mais experientes.",
-    203 => "Sem regras, apenas velocidade. Onde o vale-tudo impera.",
-    204 => "Desafios temáticos e pistas insanas estilo Hot Wheels.",
-    205 => "A taça dos campeões. Apenas a elite sobrevive aqui."
+    201 => "Desafios temáticos e pistas insanas estilo Hot Wheels.",
+    202 => "Desafios temáticos e pistas insanas estilo Hot Wheels.",
+    203 => "Corrida de resistência e velocidade inspirada na Nascar.",
+    204 => "A liga definitiva de turismo para os pilotos mais experientes.",
+    205 => "Sem regras, apenas velocidade. Qualquer manobra ou glitch é aceito. Onde o vale-tudo impera.",
+    206 => "A taça dos campeões. Apenas a elite sobrevive aqui."
 ];
 
 $tg3k_description_text = "Corridas interplanetárias no ano 3000. O futuro da velocidade.";
@@ -303,13 +306,14 @@ foreach ($tg1_tournaments as &$t) {
 }
 unset($t);
 
-// --- TORNEIOS TG2 (201 a 205) ---
+// --- TORNEIOS TG2 (201 a 206) ---
 $tg2_tournaments = [
     ['id' => 201, 'name' => 'Hot Wheels Top Gear 2 Cenários', 'type' => 'Special'],
-    ['id' => 202, 'name' => 'TG2 Stock Car Vale Tudo', 'type' => 'Stock'],
+    ['id' => 202, 'name' => 'Hot Wheels Top Gear 2 Cenários - Complemento', 'type' => 'Special'],
     ['id' => 203, 'name' => 'Nascar Mestres do Top Gear 2', 'type' => 'Nascar'],
     ['id' => 204, 'name' => 'Gran Turismo League TG2', 'type' => 'GT League'],
-    ['id' => 205, 'name' => 'Champions Cup', 'type' => 'Elite'],
+    ['id' => 205, 'name' => 'TG2 Stock Car Vale Tudo', 'type' => 'Stock'],
+    ['id' => 206, 'name' => 'Champions Cup', 'type' => 'Elite'],
 ];
 
 // Injetar descrições no TG2

@@ -12,7 +12,7 @@ if (defined('DEBUG_MODE') && DEBUG_MODE) {
 
 try {
     $jsonPath = defined('JSON_PATH') ? JSON_PATH : __DIR__ . '/../storage/json/';
-    
+
     // Busca todos os arquivos de histórico
     $files = glob($jsonPath . '*-history.json');
     $globalHistory = [];
@@ -22,17 +22,17 @@ try {
             $filename = basename($file);
             $idStr = str_replace('-history.json', '', $filename);
             $id = (int)$idStr; // Converte para inteiro para comparações seguras
-            
+
             // Lê o histórico
             $fileContent = file_get_contents($file);
             if (!$fileContent) continue;
-            
+
             $historyData = json_decode($fileContent, true);
-            
+
             // Busca título do torneio
             $stateFile = $jsonPath . $idStr . '.json';
-            $tournamentTitle = "Torneio #$id"; 
-            
+            $tournamentTitle = "Torneio #$id";
+
             if (file_exists($stateFile)) {
                 $stateContent = file_get_contents($stateFile);
                 if ($stateContent) {
@@ -52,16 +52,16 @@ try {
 
                     $phase = $entry['phase'] ?? 'N/D';
                     $obs = $entry['obs'] ?? ""; // Observação original se existir
-                    
+
                     // --- LÓGICA DE OBSERVAÇÃO DINÂMICA ---
-                    
+
                     // 1. Regra Específica do Torneio 109
                     if ($id === 109) {
                         $obs = "Jogo de Ida e Volta. O desempate é jogado com o carro proibido no país subsequente.";
                     }
                     // 2. Regra Específica do Torneio 117
                     elseif ($id === 117) {
-                        if ($phase === 'F5' || $phase === 'Final e 3°') {
+                        if ($phase === 'F5' || $phase === 'Final e 3º') {
                             $obs = "Devem ser utilizados todos os 4 carros na disputa, sendo um carro a cada 2 países e o desempate deve ser iniciado no país seguinte ao último sorteado.";
                         } else {
                             $obs = "Sorteio de Países";
@@ -88,24 +88,24 @@ try {
                     // 4. Torneios de Rodadas (102, 118, 106)
                     elseif ($id === 102 || $id === 118 || $id === 106) {
                         if (strpos($phase, 'Rodada') !== false) {
-                            $obs = strtoupper($phase); 
+                            $obs = strtoupper($phase);
                         } else {
                             $obs = "Sorteio de Rodadas";
                         }
                     }
                     // 5. Regra para os torneios de países
                     elseif (in_array($id, [101, 107, 112, 116])) {
-                         $obs = "Sorteio de Países";
+                        $obs = "Sorteio de Países";
                     }
                     // 6. Outras regras baseadas em ID
-                    elseif (strpos((string)$id, '3') === 0) { 
+                    elseif (strpos((string)$id, '3') === 0) {
                         $obs = "Sistema Planetário";
                     } elseif (strpos((string)$id, '2') === 0) {
                         if (count($entry['drawnItems'] ?? []) == 2) {
                             $obs = "Sorteio de Países";
                         }
                     } elseif ($id === 501) {
-                        $obs = ""; 
+                        $obs = "";
                     } elseif (strpos((string)$id, '4') === 0) {
                         $obs = "Cenário Especial";
                     }

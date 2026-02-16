@@ -46,7 +46,7 @@ $nav_tabs = [
         'text_color' => 'text-yellow-900', 
         'icon' => 'fa-calculator',
         'is_link' => true,
-        'url' => 'https://topgearchampionships.com/sites/sorteios/calculadora_cenario_3.html'
+        'url' => 'https://topgearchampionships.com/sites/sorteios/calculadora_cenario_3.php'
     ]
 ];
 ?>
@@ -64,6 +64,15 @@ $nav_tabs = [
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
     
     <style>
+        :root {
+            --forbidden-bg: #f59e0b;
+            --forbidden-bg-soft: #fbbf24;
+            --forbidden-panel: #fffbeb;
+            --forbidden-border: #f59e0b;
+            --forbidden-text: #78350f;
+            --forbidden-btn: #d97706;
+            --forbidden-btn-hover: #b45309;
+        }
         body { font-family: 'Inter', sans-serif; background-color: #f5f5f0; color: #1f1f1f; }
         .history-scroll::-webkit-scrollbar { width: 8px; }
         .history-scroll::-webkit-scrollbar-track { background: #f1f1f1; }
@@ -95,6 +104,15 @@ $nav_tabs = [
         }
         .table-auto th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
         .table-auto td { font-size: 0.85rem; }
+        .forbidden-theme { background: linear-gradient(135deg, var(--forbidden-bg), var(--forbidden-bg-soft)); border-top: 4px solid var(--forbidden-border); box-shadow: 0 8px 20px rgba(120, 53, 15, 0.18); }
+        .forbidden-theme-title { color: #ffffff; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+        .forbidden-theme-card { background: var(--forbidden-panel); border: 1px solid #fcd34d; color: var(--forbidden-text); }
+        .forbidden-theme-input { background: #ffffff; color: var(--forbidden-text); border: 1px solid #f59e0b; }
+        .forbidden-theme-input:focus { border-color: #b45309; box-shadow: 0 0 0 1px #b45309; }
+        .forbidden-theme-draw { background: linear-gradient(180deg, var(--forbidden-btn), var(--forbidden-btn-hover)); color: #fff; border-bottom: 4px solid #92400e; }
+        .forbidden-theme-draw:disabled { background: #d1d5db; color: #6b7280; border-bottom: 0; }
+        .admin-tools-btn { background: #1f2937; color: #fff; }
+        .admin-tools-btn:hover { background: #111827; }
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
@@ -167,6 +185,17 @@ $nav_tabs = [
                 <?php render_section_header('Painel Administrativo', 'chart-pie'); ?>
                  
                 <!-- Histórico Global com Tabela de 5 Colunas -->
+                <div class="bg-white rounded-xl shadow-lg border border-gray-100 p-4">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <h3 class="font-bold text-gray-700 flex items-center"><i class="fas fa-gears mr-2"></i>Gestão do Sistema</h3>
+                        <div class="flex gap-2">
+                            <button onclick="app.createBackup()" class="admin-tools-btn px-4 py-2 rounded-lg font-semibold text-sm shadow"><i class="fas fa-box-archive mr-2"></i>Criar Backup</button>
+                            <button onclick="app.loadGlobalHistory()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-semibold text-sm shadow"><i class="fas fa-rotate mr-2"></i>Atualizar Histórico</button>
+                        </div>
+                    </div>
+                    <p id="backup-status" class="mt-3 text-sm text-gray-600"></p>
+                </div>
+
                 <div class="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden mt-6">
                     <div class="bg-gray-50 px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4">
                         <h3 class="font-bold text-gray-700 flex items-center"><i class="fas fa-history mr-2"></i>Histórico Global de Sorteios</h3>
@@ -261,13 +290,13 @@ $nav_tabs = [
 
             <!-- Tab: Forbidden -->
             <div id="tab-forbidden" class="hidden fade-in">
-                <section class="p-6 bg-slate-800 rounded-xl border-t-4 border-slate-500 shadow-xl ring-1 ring-slate-700 mt-2" id="forbidden-car-section">
-                    <div class="mb-6 border-b border-slate-700 pb-4">
-                        <h2 class="text-2xl font-bold text-white mb-2 flex items-center gap-3"><i class="fa-solid fa-ban text-red-500"></i> Sorteio de Carros Proibidos</h2>
+                <section class="p-6 rounded-xl shadow-xl mt-2 forbidden-theme" id="forbidden-car-section">
+                    <div class="mb-6 border-b border-amber-200 pb-4">
+                        <h2 class="text-2xl font-bold mb-2 flex items-center gap-3 forbidden-theme-title"><i class="fa-solid fa-ban text-amber-100"></i> Sorteio de Carros Proibidos</h2>
                     </div>
                     <div class="mb-6">
-                        <label class="block text-sm font-bold text-slate-400 mb-2 uppercase tracking-wide">Lista de Torneios (Obrigatório)</label>
-                        <select id="forbidden-car-tournament-select" onchange="app.checkForbiddenButton()" class="w-full p-3 rounded-xl bg-slate-900 text-white border border-slate-700 focus:outline-none focus:border-red-500 transition-colors">
+                        <label class="block text-sm font-bold text-amber-900 mb-2 uppercase tracking-wide">Lista de Torneios (Obrigatório)</label>
+                        <select id="forbidden-car-tournament-select" onchange="app.checkForbiddenButton()" class="w-full p-3 rounded-xl forbidden-theme-input focus:outline-none transition-colors">
                             <option value="" disabled selected>Selecionar Torneio...</option>
                             <?php foreach($tg1_tournaments as $t): ?>
                                 <option value="<?php echo $t['name']; ?>"><?php echo $t['name']; ?></option>
@@ -276,14 +305,14 @@ $nav_tabs = [
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div class="md:col-span-2">
-                            <div class="h-full min-h-[300px] p-6 bg-slate-900 rounded-xl border border-slate-700 flex flex-col justify-center items-center relative overflow-hidden group shadow-inner">
+                            <div class="h-full min-h-[300px] p-6 rounded-xl border border-amber-200 flex flex-col justify-center items-center relative overflow-hidden group shadow-inner forbidden-theme-card">
                                  <div id="forbidden-car-result-container" class="flex flex-col items-center justify-center w-full h-full">
                                     <div class="wheel-container relative w-64 h-64">
-                                        <div class="wheel-pointer absolute top-0 left-1/2 -translate-x-1/2 -translate-y-3 z-20 w-6 h-8 filter drop-shadow-md"><i class="fas fa-caret-down text-4xl text-white"></i></div>
-                                        <div id="wheel-spinner" class="wheel w-full h-full rounded-full border-4 border-slate-600 shadow-2xl transition-transform duration-[3000ms] ease-[cubic-bezier(0.25,0.1,0.25,1)]"></div>
-                                        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 bg-slate-900 rounded-full border-4 border-slate-800 shadow-inner z-10"></div>
+                                        <div class="wheel-pointer absolute top-0 left-1/2 -translate-x-1/2 -translate-y-3 z-20 w-6 h-8 filter drop-shadow-md"><i class="fas fa-caret-down text-4xl text-amber-900"></i></div>
+                                        <div id="wheel-spinner" class="wheel w-full h-full rounded-full border-4 border-amber-300 shadow-2xl transition-transform duration-[3000ms] ease-[cubic-bezier(0.25,0.1,0.25,1)]"></div>
+                                        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 bg-amber-50 rounded-full border-4 border-amber-200 shadow-inner z-10"></div>
                                     </div>
-                                    <div id="wheel-text-result" class="mt-6 font-black text-2xl text-white opacity-0 transition-opacity duration-500 uppercase tracking-widest bg-slate-800 px-4 py-2 rounded-lg border border-slate-700">...</div>
+                                    <div id="wheel-text-result" class="mt-6 font-black text-2xl text-amber-900 opacity-0 transition-opacity duration-500 uppercase tracking-widest bg-amber-100 px-4 py-2 rounded-lg border border-amber-300">...</div>
                                 </div>
                             </div>
                         </div>
@@ -294,8 +323,8 @@ $nav_tabs = [
                                  <button onclick="app.toggleCarBan('Branco')" id="ban-btn-Branco" class="ban-toggle bg-gray-100 hover:bg-white text-gray-800 border border-gray-300 py-3 rounded-lg font-bold shadow text-xs uppercase transition-all flex items-center justify-center gap-2">Branco</button>
                                  <button onclick="app.toggleCarBan('Roxo')" id="ban-btn-Roxo" class="ban-toggle bg-purple-600 hover:bg-purple-500 text-white py-3 rounded-lg font-bold shadow text-xs uppercase transition-all flex items-center justify-center gap-2">Roxo</button>
                             </div>
-                            <p id="ban-warning" class="text-xs text-red-400 text-center font-bold hidden">Manter pelo menos 2 cores!</p>
-                            <button onclick="app.drawForbiddenCar()" id="btn-draw-forbidden" disabled class="flex-grow bg-gradient-to-br from-red-600 to-red-700 text-white rounded-xl font-black text-2xl shadow-lg border-b-4 border-red-900 py-6 active:border-b-0 active:translate-y-1 transition-all mt-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:border-none disabled:active:translate-y-0 disabled:from-slate-600 disabled:to-slate-700"><i class="fa-solid fa-arrows-rotate mr-2"></i> GIRAR</button>
+                            <p id="ban-warning" class="text-xs text-amber-900 text-center font-bold hidden">Manter pelo menos 2 cores!</p>
+                            <button onclick="app.drawForbiddenCar()" id="btn-draw-forbidden" disabled class="flex-grow forbidden-theme-draw rounded-xl font-black text-2xl shadow-lg py-6 active:border-b-0 active:translate-y-1 transition-all mt-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:translate-y-0"><i class="fa-solid fa-arrows-rotate mr-2"></i> GIRAR</button>
                         </div>
                     </div>
                 </section>
@@ -441,12 +470,59 @@ $nav_tabs = [
             return { title: 'Desconhecido' };
         };
 
+        const createBackup = () => {
+            const status = document.getElementById('backup-status');
+            if (status) status.textContent = 'Gerando backup...';
+
+            fetch('api/CreateBackup.php', { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        if (status) status.innerHTML = `Backup criado: <span class="font-semibold">${data.filename}</span>`;
+                        logSystem(`Backup criado: ${data.filename}`, "SUCCESS");
+                    } else {
+                        if (status) status.textContent = `Erro no backup: ${data.message}`;
+                        logSystem(`Erro no backup: ${data.message}`, "ERROR");
+                    }
+                })
+                .catch(() => {
+                    if (status) status.textContent = 'Erro de conexão ao criar backup.';
+                    logSystem('Erro de conexão ao criar backup.', "ERROR");
+                });
+        };
+
         const getTiebreakerText = (phase, type, article, tournamentId = null) => {
             // Regra Especial para Torneio 109 em todas as fases
             if (tournamentId && parseInt(tournamentId) === 109) {
                 return `<div class='mt-3 p-3 bg-blue-50 text-blue-800 text-xs rounded border border-blue-200 leading-snug flex items-start gap-2 shadow-sm'><i class="fas fa-info-circle mt-0.5 text-blue-600"></i><div><strong class="block mb-1 text-blue-700">Regra de Disputa:</strong> Jogo de Ida e Volta. O desempate é jogado com o carro proibido no país subsequente.</div></div>`;
             }
+
+            // Torneio 202 não exibe mensagem de desempate em nenhuma fase.
+            if (tournamentId && parseInt(tournamentId) === 202) {
+                return "";
+            }
             
+            if (tournamentId && parseInt(tournamentId) === 201) {
+                return `<div class='mt-3 p-3 bg-yellow-50 text-yellow-800 text-xs rounded border border-yellow-200 leading-snug flex items-start gap-2 shadow-sm'><i class="fas fa-exclamation-triangle mt-0.5 text-yellow-600"></i><div><strong class="block mb-1 text-yellow-700">Regra de Desempate:</strong> O desempate deve ser jogando o cenário 5 ‘Velozes e Furiosos 2093’ iniciando no país scandinavia</div></div>`;
+            }
+
+            if (tournamentId && [203, 205].includes(parseInt(tournamentId))) {
+                if (phase.includes("F1") || phase.includes("Grupos")) {
+                    return `<div class='mt-3 p-3 bg-blue-50 text-blue-800 text-xs rounded border border-blue-200 leading-snug flex items-start gap-2 shadow-sm'><i class="fas fa-info-circle mt-0.5 text-blue-600"></i><div><strong class="block mb-1 text-blue-700">Fase de grupos:</strong> 2 países por rodada, sendo 1 país para cada corrida (formato ida e volta)</div></div>`;
+                }
+                if (phase.includes("F2") || phase.includes("F3") || phase.includes("F4") || phase.includes("F5") || phase.includes("8") || phase.includes("4") || phase.includes("Semi") || phase.includes("Final")) {
+                    return `<div class='mt-3 p-3 bg-yellow-50 text-yellow-800 text-xs rounded border border-yellow-200 leading-snug flex items-start gap-2 shadow-sm'><i class="fas fa-exclamation-triangle mt-0.5 text-yellow-600"></i><div><strong class="block mb-1 text-yellow-700">Regra de Desempate:</strong> O desempate será disputado no país seguinte ao último país sorteado.</div></div>`;
+                }
+                return "";
+            }
+
+            if (tournamentId && parseInt(tournamentId) === 206) {
+                if (phase.includes("F3") || phase.includes("F4") || phase.includes("F5") || phase.includes("4") || phase.includes("Semi") || phase.includes("Final")) {
+                    return `<div class='mt-3 p-3 bg-yellow-50 text-yellow-800 text-xs rounded border border-yellow-200 leading-snug flex items-start gap-2 shadow-sm'><i class="fas fa-exclamation-triangle mt-0.5 text-yellow-600"></i><div><strong class="block mb-1 text-yellow-700">Regra de Desempate:</strong> O desempate será disputado no país seguinte ao último país sorteado.</div></div>`;
+                }
+                return "";
+            }
+
             // --- REGRAS DO TORNEIO 110 ---
             if (tournamentId && parseInt(tournamentId) === 110) {
                 if (phase.includes("F1") || phase.includes("Grupos")) {
@@ -922,7 +998,7 @@ $nav_tabs = [
             }
 
             // --- LÓGICA DE DECISÃO: SERVER-SIDE VS CLIENT-SIDE ---
-            if (id == 102 || id == 118 || id == 106 || [101, 107, 112, 116, 109, 110, 117, 301, 401, 402, 403, 404, 406, ...LA_LIGA_TOURNAMENT_IDS].includes(parseInt(id))) {
+            if (id == 102 || id == 118 || id == 106 || [101, 107, 112, 116, 109, 110, 117, 201, 202, 203, 204, 205, 206, 301, 401, 402, 403, 404, 406, ...LA_LIGA_TOURNAMENT_IDS].includes(parseInt(id))) {
                 // Sorteio Server-Side (Regras complexas: Países, Stonehenge, Pote Cíclico)
                 const payload = {
                     tournamentId: id,
@@ -1098,7 +1174,7 @@ $nav_tabs = [
              setTimeout(() => {
                  textRes.classList.remove('opacity-0');
                  textRes.innerText = car.name;
-                 textRes.className = `mt-6 font-black text-2xl uppercase tracking-widest bg-slate-800 px-4 py-2 rounded-lg border border-slate-700 transition-opacity duration-500 ${car.color_name === 'Vermelho' ? 'text-red-400' : (car.color_name === 'Azul' ? 'text-blue-400' : (car.color_name === 'Roxo' ? 'text-purple-400' : 'text-white'))}`;
+                 textRes.className = `mt-6 font-black text-2xl uppercase tracking-widest bg-amber-100 px-4 py-2 rounded-lg border border-amber-300 transition-opacity duration-500 ${car.color_name === 'Vermelho' ? 'text-red-700' : (car.color_name === 'Azul' ? 'text-blue-700' : (car.color_name === 'Roxo' ? 'text-purple-700' : 'text-amber-900'))}`;
                  logSystem(`Carro Proibido: ${car.name} (${selectedTournamentName})`, "WARNING");
 
                  const payload = {
@@ -1147,10 +1223,10 @@ $nav_tabs = [
         });
 
         window.app = {
-            checkLogin, switchTab, drawTG1, drawTG2, drawTG3K, drawCenario, drawForbiddenCar, toggleCarBan, selectPhase, loadGlobalHistory, checkForbiddenButton, sortearRepeticoes405, sortearPista405,
+            checkLogin, switchTab, drawTG1, drawTG2, drawTG3K, drawCenario, drawForbiddenCar, toggleCarBan, selectPhase, loadGlobalHistory, checkForbiddenButton, sortearRepeticoes405, sortearPista405, createBackup,
             refreshSystem: () => window.location.reload(),
             resetTG1: () => logSystem('Reset TG1 acionado'),
-            backupGlobal: () => alert('Backup solicitado (Simulação)'),
+            backupGlobal: createBackup,
             // Função de Filtro
             filterHistory: () => {
                 const input = document.getElementById('history-filter');
@@ -1171,3 +1247,4 @@ $nav_tabs = [
     </script>
 </body>
 </html>
+

@@ -24,12 +24,18 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $input = json_decode(file_get_contents('php://input'), true);
 $tournamentId = $input['tournamentId'] ?? null;
 // A fase selecionada no botão (frontend)
-$inputPhaseLabel = $input['phase'] ?? 'Fase Desconhecida'; 
+$inputPhaseLabel = $input['phase'] ?? 'Fase Desconhecida';
 $title = $input['title'] ?? "Torneio $tournamentId";
 $laLigaSixTournamentIds = [103, 104, 105, 113, 114, 115];
 $isLaLigaSix = in_array((int)$tournamentId, $laLigaSixTournamentIds, true);
 $isTg3000Tournament = ((int)$tournamentId === 301);
 $isTg3000CyclePhase = false;
+$isTg2201Tournament = ((int)$tournamentId === 201);
+$isTg2202Tournament = ((int)$tournamentId === 202);
+$isTg2203Tournament = ((int)$tournamentId === 203);
+$isTg2204Tournament = ((int)$tournamentId === 204);
+$isTg2205Tournament = ((int)$tournamentId === 205);
+$isTg2206Tournament = ((int)$tournamentId === 206);
 $isCenario401Tournament = ((int)$tournamentId === 401);
 $isCenario402Tournament = ((int)$tournamentId === 402);
 $isCenario403Tournament = ((int)$tournamentId === 403);
@@ -40,6 +46,12 @@ $usedItemsPotC = [];
 $usedItemsPot402 = [];
 $usedItemsPot403 = [];
 $usedItemsPotFull = [];
+$usedItemsTg2Pairs201 = [];
+$usedItemsTg2Cenarios202 = [];
+$usedItemsTg2Countries203 = [];
+$usedItemsTg2Pairs204 = [];
+$usedItemsTg2Countries205 = [];
+$usedItemsTg2Countries206 = [];
 
 if (!$tournamentId) {
     echo json_encode(['status' => 'error', 'message' => 'ID do torneio obrigatório']);
@@ -59,15 +71,15 @@ try {
     $shouldUpdateRoundCounter = false;
     $nextRound = 0;
 
-    // Apenas para 102, 118 e 106 aplicamos a lógica de "Rodada X"
-    if ($tournamentId == 102 || $tournamentId == 118 || $tournamentId == 106) {
+    // Apenas para 102, 118, 106 e 204 aplicamos a lógica de "Rodada X"
+    if ($tournamentId == 102 || $tournamentId == 118 || $tournamentId == 106 || $tournamentId == 204) {
         $currentRound = $currentState['roundCounter'] ?? 0;
         $nextRound = $currentRound + 1;
-        
-        if ($nextRound > 50) {
+
+        if ($tournamentId != 204 && $nextRound > 50) {
             $nextRound = 1; // Reseta após 50
         }
-        
+
         $phaseToSave = "Rodada $nextRound";
         $shouldUpdateRoundCounter = true;
     }
@@ -80,7 +92,7 @@ try {
     $drawCount = 0;
     $specialRules = false;
     $stonehengeRule = false;
-    $formatAsRounds = false; 
+    $formatAsRounds = false;
     $drawResult = []; // Inicializa array de resultado
     $customLogicApplied = false; // Flag para indicar se lógica customizada foi usada (ex: 110)
     $allowCyclicPot = true;
@@ -93,6 +105,24 @@ try {
     }
     if ($isTg3000Tournament) {
         $usedItems = $currentState['usedItemsTg3000Cycle'] ?? [];
+    }
+    if ($isTg2201Tournament) {
+        $usedItemsTg2Pairs201 = $currentState['usedItemsTg2Pairs201'] ?? [];
+    }
+    if ($isTg2202Tournament) {
+        $usedItemsTg2Cenarios202 = $currentState['usedItemsTg2Cenarios202'] ?? [];
+    }
+    if ($isTg2203Tournament) {
+        $usedItemsTg2Countries203 = $currentState['usedItemsTg2Countries203'] ?? [];
+    }
+    if ($isTg2204Tournament) {
+        $usedItemsTg2Pairs204 = $currentState['usedItemsTg2Pairs204'] ?? [];
+    }
+    if ($isTg2205Tournament) {
+        $usedItemsTg2Countries205 = $currentState['usedItemsTg2Countries205'] ?? [];
+    }
+    if ($isTg2206Tournament) {
+        $usedItemsTg2Countries206 = $currentState['usedItemsTg2Countries206'] ?? [];
     }
     if ($isCenario401Tournament) {
         $usedItemsPotA = $currentState['usedItemsPotA'] ?? [];
@@ -108,26 +138,26 @@ try {
     if ($isCenario404Or406Tournament) {
         $usedItemsPotFull = $currentState['usedItemsPotFull'] ?? [];
     }
-    
+
     // Configuração baseada no ID
     if ($tournamentId == 102 || $tournamentId == 118) {
-        global $tracks_tg1; 
+        global $tracks_tg1;
         $basePool = $tracks_tg1;
         $drawCount = 12;
         $specialRules = true; // Regra de países obrigatórios
         $stonehengeRule = true; // Regra Stonehenge 12ª posição
-    } 
+    }
     elseif ($tournamentId == 106) {
-        global $tracks_tg1; 
+        global $tracks_tg1;
         $basePool = $tracks_tg1;
-        $drawCount = 8; 
-        $specialRules = true; 
-        $stonehengeRule = true; 
+        $drawCount = 8;
+        $specialRules = true;
+        $stonehengeRule = true;
     }
     elseif ($tournamentId == 109) {
-        global $countries_tg1; 
+        global $countries_tg1;
         $basePool = $countries_tg1;
-        
+
         if (stripos($inputPhaseLabel, 'F0') !== false || stripos($inputPhaseLabel, 'Eliminat') !== false) {
             $drawCount = 2;
         }
@@ -137,6 +167,384 @@ try {
         else {
             $drawCount = 3;
         }
+    }
+    elseif ($tournamentId == 201) {
+        global $tg2_country_pairs;
+        $customLogicApplied = true;
+        $shouldTrackUsedItems = false;
+        $drawResult = [];
+
+        if (
+            stripos($inputPhaseLabel, 'F1') === false &&
+            stripos($inputPhaseLabel, 'F2') === false &&
+            stripos($inputPhaseLabel, 'F3') === false &&
+            stripos($inputPhaseLabel, 'F4') === false &&
+            stripos($inputPhaseLabel, 'F5') === false &&
+            stripos($inputPhaseLabel, 'Grupos') === false &&
+            stripos($inputPhaseLabel, '8') === false &&
+            stripos($inputPhaseLabel, '4') === false &&
+            stripos($inputPhaseLabel, 'Semi') === false &&
+            stripos($inputPhaseLabel, 'Final') === false
+        ) {
+            throw new Exception('Fase não suportada para o torneio 201.');
+        }
+
+        // Normaliza o pote para string única por par de países.
+        $pairsPool = [];
+        foreach ($tg2_country_pairs as $pair) {
+            if (is_array($pair) && isset($pair[0]) && isset($pair[1])) {
+                $pairsPool[] = $pair[0] . " + " . $pair[1];
+            }
+        }
+        $pairsPool = array_values(array_unique($pairsPool));
+
+        $sortearFase201 = function($historicoCiclo) use ($pairsPool) {
+            $selected = [];
+            $usedState = array_values(array_unique($historicoCiclo));
+
+            for ($i = 0; $i < 5; $i++) {
+                $available = array_values(array_diff($pairsPool, $usedState, $selected));
+
+                if (empty($available)) {
+                    // Reinicia ciclo ao esgotar todo o pote.
+                    $usedState = [];
+                    $available = array_values(array_diff($pairsPool, $selected));
+                }
+
+                if (empty($available)) {
+                    break;
+                }
+
+                $pick = $available[array_rand($available)];
+                $selected[] = $pick;
+                $usedState[] = $pick;
+                $usedState = array_values(array_unique($usedState));
+            }
+
+            if (count($selected) < 5) {
+                throw new Exception('Não foi possível completar as 5 rodadas do torneio 201.');
+            }
+
+            // Ordem fixa de exibição: Cenários 1,2,3,5,6 (sem Cenário 4).
+            $display = [
+                "Cenário 1 - " . $selected[0],
+                "Cenário 2 - " . $selected[1],
+                "Cenário 3 - " . $selected[2],
+                "Cenário 5 - " . $selected[3],
+                "Cenário 6 - " . $selected[4]
+            ];
+
+            return [$display, $usedState];
+        };
+
+        [$drawResult, $usedItemsTg2Pairs201] = $sortearFase201($usedItemsTg2Pairs201);
+    }
+    elseif ($tournamentId == 202) {
+        global $tg2_cenarios_pool;
+        $customLogicApplied = true;
+        $shouldTrackUsedItems = false;
+        $drawResult = [];
+
+        $isF1 = (stripos($inputPhaseLabel, 'F1') !== false || stripos($inputPhaseLabel, 'Grupos') !== false);
+        $isF2 = (stripos($inputPhaseLabel, 'F2') !== false || stripos($inputPhaseLabel, '8') !== false);
+        $isF3 = (stripos($inputPhaseLabel, 'F3') !== false || stripos($inputPhaseLabel, '4') !== false);
+        $isF4 = (stripos($inputPhaseLabel, 'F4') !== false || stripos($inputPhaseLabel, 'Semi') !== false);
+        // F5 deve casar apenas com "F5" ou "Final e 3º" (não com "8ª de Final", "4ª de Final" ou "Semifinal").
+        $isF5 = (stripos($inputPhaseLabel, 'F5') !== false || stripos($inputPhaseLabel, 'Final e 3') !== false);
+
+        if (!$isF1 && !$isF2 && !$isF3 && !$isF4 && !$isF5) {
+            throw new Exception('Fase não suportada para o torneio 202.');
+        }
+
+        if ($isF2 || $isF3) {
+            $drawCount = 3;
+        } elseif ($isF4) {
+            $drawCount = 4; // F4
+        } elseif ($isF1 || $isF5) {
+            $drawCount = 5;
+        } else {
+            throw new Exception('Não foi possível determinar a quantidade de sorteio para o torneio 202.');
+        }
+
+        $pool = array_values(array_unique($tg2_cenarios_pool));
+        if (count($pool) < $drawCount) {
+            throw new Exception('Pool insuficiente para o sorteio do torneio 202.');
+        }
+
+        $usedState = array_values(array_unique($usedItemsTg2Cenarios202));
+        $selected = [];
+
+        for ($i = 0; $i < $drawCount; $i++) {
+            $available = array_values(array_diff($pool, $usedState, $selected));
+
+            if (empty($available)) {
+                // Reinicia ciclo global ao esgotar todos os itens do pool.
+                $usedState = [];
+                $available = array_values(array_diff($pool, $selected));
+            }
+
+            if (empty($available)) {
+                break;
+            }
+
+            $pick = $available[array_rand($available)];
+            $selected[] = $pick;
+            $usedState[] = $pick;
+            $usedState = array_values(array_unique($usedState));
+        }
+
+        if (count($selected) < $drawCount) {
+            throw new Exception('Não foi possível completar o sorteio do torneio 202.');
+        }
+
+        $drawResult = $selected;
+        $usedItemsTg2Cenarios202 = $usedState;
+    }
+    elseif ($tournamentId == 203) {
+        global $tg2_countries;
+        $customLogicApplied = true;
+        $shouldTrackUsedItems = false;
+        $drawResult = [];
+
+        $isF1 = (stripos($inputPhaseLabel, 'F1') !== false || stripos($inputPhaseLabel, 'Grupos') !== false);
+        $isF2 = (stripos($inputPhaseLabel, 'F2') !== false || stripos($inputPhaseLabel, '8') !== false);
+        $isF3 = (stripos($inputPhaseLabel, 'F3') !== false || stripos($inputPhaseLabel, '4') !== false);
+        $isF4 = (stripos($inputPhaseLabel, 'F4') !== false || stripos($inputPhaseLabel, 'Semi') !== false);
+        $isF5 = (stripos($inputPhaseLabel, 'F5') !== false || stripos($inputPhaseLabel, 'Final e 3') !== false);
+
+        if (!$isF1 && !$isF2 && !$isF3 && !$isF4 && !$isF5) {
+            throw new Exception('Fase não suportada para o torneio 203.');
+        }
+
+        if ($isF1) {
+            $drawCount = 8; // 4 rodadas x 2 países
+        } elseif ($isF2 || $isF3 || $isF4) {
+            $drawCount = 3;
+        } else {
+            $drawCount = 4; // F5
+        }
+
+        $pool = array_values(array_unique($tg2_countries));
+        if (count($pool) < $drawCount) {
+            throw new Exception('Pool insuficiente para o sorteio do torneio 203.');
+        }
+
+        $usedState = array_values(array_unique($usedItemsTg2Countries203));
+        $selected = [];
+        $bannedInPhase = (($isF4 || $isF5) ? ['AUS - Australasia'] : []);
+
+        for ($i = 0; $i < $drawCount; $i++) {
+            $available = array_values(array_diff($pool, $usedState, $selected));
+            $eligible = array_values(array_diff($available, $bannedInPhase));
+
+            if (empty($eligible)) {
+                // Se não houver elegíveis no ciclo atual, reinicia o ciclo e tenta novamente.
+                $usedState = [];
+                $available = array_values(array_diff($pool, $selected));
+                $eligible = array_values(array_diff($available, $bannedInPhase));
+            }
+
+            if (empty($eligible)) {
+                break;
+            }
+
+            $pick = $eligible[array_rand($eligible)];
+            $selected[] = $pick;
+            $usedState[] = $pick;
+            $usedState = array_values(array_unique($usedState));
+        }
+
+        if (count($selected) < $drawCount) {
+            throw new Exception('Não foi possível completar o sorteio do torneio 203.');
+        }
+
+        if ($isF1) {
+            $drawResult = [
+                "Rodada 1: {$selected[0]} + {$selected[1]}",
+                "Rodada 2: {$selected[2]} + {$selected[3]}",
+                "Rodada 3: {$selected[4]} + {$selected[5]}",
+                "Rodada 4: {$selected[6]} + {$selected[7]}"
+            ];
+        } else {
+            $drawResult = $selected;
+        }
+
+        $usedItemsTg2Countries203 = $usedState;
+    }
+    elseif ($tournamentId == 204) {
+        global $tg2_country_pairs;
+        $customLogicApplied = true;
+        $shouldTrackUsedItems = false;
+        $drawResult = [];
+
+        if (
+            stripos($inputPhaseLabel, 'F6') === false &&
+            stripos($inputPhaseLabel, 'Rodada') === false
+        ) {
+            throw new Exception('Fase não suportada para o torneio 204. Use apenas F6 (Rodada).');
+        }
+
+        // Normaliza o pote para string única de par.
+        $pairsPool = [];
+        foreach ($tg2_country_pairs as $pair) {
+            if (is_array($pair) && isset($pair[0]) && isset($pair[1])) {
+                $pairsPool[] = $pair[0] . " + " . $pair[1];
+            }
+        }
+        $pairsPool = array_values(array_unique($pairsPool));
+
+        if (empty($pairsPool)) {
+            throw new Exception('Pool vazio para o torneio 204.');
+        }
+
+        $usedState = array_values(array_unique($usedItemsTg2Pairs204));
+        $available = array_values(array_diff($pairsPool, $usedState));
+
+        if (empty($available)) {
+            // Reinicia ciclo ao esgotar todo o pote.
+            $usedState = [];
+            $available = $pairsPool;
+        }
+
+        if (empty($available)) {
+            throw new Exception('Não foi possível obter par válido para o torneio 204.');
+        }
+
+        $pick = $available[array_rand($available)];
+        $usedState[] = $pick;
+        $usedState = array_values(array_unique($usedState));
+
+        // Exibição por rodada no próprio item.
+        $drawResult = ["Rodada {$nextRound} - {$pick}"];
+        $usedItemsTg2Pairs204 = $usedState;
+    }
+    elseif ($tournamentId == 205) {
+        global $tg2_countries;
+        $customLogicApplied = true;
+        $shouldTrackUsedItems = false;
+        $drawResult = [];
+
+        $isF1 = (stripos($inputPhaseLabel, 'F1') !== false || stripos($inputPhaseLabel, 'Grupos') !== false);
+        $isF2 = (stripos($inputPhaseLabel, 'F2') !== false || stripos($inputPhaseLabel, '8') !== false);
+        $isF3 = (stripos($inputPhaseLabel, 'F3') !== false || stripos($inputPhaseLabel, '4') !== false);
+        $isF4 = (stripos($inputPhaseLabel, 'F4') !== false || stripos($inputPhaseLabel, 'Semi') !== false);
+        $isF5 = (stripos($inputPhaseLabel, 'F5') !== false || stripos($inputPhaseLabel, 'Final e 3') !== false);
+
+        if (!$isF1 && !$isF2 && !$isF3 && !$isF4 && !$isF5) {
+            throw new Exception('Fase não suportada para o torneio 205.');
+        }
+
+        if ($isF1) {
+            $drawCount = 8; // 4 rodadas x 2 países
+        } elseif ($isF2 || $isF3 || $isF4) {
+            $drawCount = 3;
+        } else {
+            $drawCount = 4; // F5
+        }
+
+        $pool = array_values(array_unique($tg2_countries));
+        if (count($pool) < $drawCount) {
+            throw new Exception('Pool insuficiente para o sorteio do torneio 205.');
+        }
+
+        $usedState = array_values(array_unique($usedItemsTg2Countries205));
+        $selected = [];
+        $bannedInPhase = (($isF4 || $isF5) ? ['AUS - Australasia'] : []);
+
+        for ($i = 0; $i < $drawCount; $i++) {
+            $available = array_values(array_diff($pool, $usedState, $selected));
+            $eligible = array_values(array_diff($available, $bannedInPhase));
+
+            if (empty($eligible)) {
+                $usedState = [];
+                $available = array_values(array_diff($pool, $selected));
+                $eligible = array_values(array_diff($available, $bannedInPhase));
+            }
+
+            if (empty($eligible)) {
+                break;
+            }
+
+            $pick = $eligible[array_rand($eligible)];
+            $selected[] = $pick;
+            $usedState[] = $pick;
+            $usedState = array_values(array_unique($usedState));
+        }
+
+        if (count($selected) < $drawCount) {
+            throw new Exception('Não foi possível completar o sorteio do torneio 205.');
+        }
+
+        if ($isF1) {
+            $drawResult = [
+                "Rodada 1: {$selected[0]} + {$selected[1]}",
+                "Rodada 2: {$selected[2]} + {$selected[3]}",
+                "Rodada 3: {$selected[4]} + {$selected[5]}",
+                "Rodada 4: {$selected[6]} + {$selected[7]}"
+            ];
+        } else {
+            $drawResult = $selected;
+        }
+
+        $usedItemsTg2Countries205 = $usedState;
+    }
+    elseif ($tournamentId == 206) {
+        global $tg2_countries;
+        $customLogicApplied = true;
+        $shouldTrackUsedItems = false;
+        $drawResult = [];
+
+        $isF0 = (stripos($inputPhaseLabel, 'F0') !== false || stripos($inputPhaseLabel, 'Eliminat') !== false);
+        $isF3 = (stripos($inputPhaseLabel, 'F3') !== false || stripos($inputPhaseLabel, '4') !== false);
+        $isF4 = (stripos($inputPhaseLabel, 'F4') !== false || stripos($inputPhaseLabel, 'Semi') !== false);
+        $isF5 = (stripos($inputPhaseLabel, 'F5') !== false || stripos($inputPhaseLabel, 'Final e 3') !== false);
+
+        if (!$isF0 && !$isF3 && !$isF4 && !$isF5) {
+            throw new Exception('Fase não suportada para o torneio 206. Use apenas F0, F3, F4 ou F5.');
+        }
+
+        if ($isF0) {
+            $drawCount = 3;
+        } else {
+            $drawCount = 4; // F3/F4/F5
+        }
+
+        $pool = array_values(array_unique($tg2_countries));
+        $bannedAllPhases = ['AUS - Australasia'];
+        $pool = array_values(array_diff($pool, $bannedAllPhases));
+
+        if (count($pool) < $drawCount) {
+            throw new Exception('Pool insuficiente para o sorteio do torneio 206.');
+        }
+
+        $usedState = array_values(array_unique($usedItemsTg2Countries206));
+        $selected = [];
+
+        for ($i = 0; $i < $drawCount; $i++) {
+            $available = array_values(array_diff($pool, $usedState, $selected));
+
+            if (empty($available)) {
+                // Reinicia ciclo somente ao esgotar o pote completo permitido.
+                $usedState = [];
+                $available = array_values(array_diff($pool, $selected));
+            }
+
+            if (empty($available)) {
+                break;
+            }
+
+            $pick = $available[array_rand($available)];
+            $selected[] = $pick;
+            $usedState[] = $pick;
+            $usedState = array_values(array_unique($usedState));
+        }
+
+        if (count($selected) < $drawCount) {
+            throw new Exception('Não foi possível completar o sorteio do torneio 206.');
+        }
+
+        $drawResult = $selected;
+        $usedItemsTg2Countries206 = $usedState;
     }
     // --- LÓGICA ESPECÍFICA TORNEIO 117 ---
     elseif ($tournamentId == 117) {
@@ -148,7 +556,7 @@ try {
         if (stripos($inputPhaseLabel, 'Eliminat') !== false || stripos($inputPhaseLabel, 'F0') !== false) {
             $drawCount = 3;
         }
-        // 4° de Final (F3): 4 países
+        // 4ª de Final (F3): 4 países
         elseif (stripos($inputPhaseLabel, '4') !== false || stripos($inputPhaseLabel, 'F3') !== false) {
             $drawCount = 4;
         }
@@ -156,14 +564,14 @@ try {
         elseif (stripos($inputPhaseLabel, 'Semi') !== false || stripos($inputPhaseLabel, 'F4') !== false) {
             $drawCount = 4;
         }
-        // Final e 3° (F5): 8 países Sequenciais (Ciclo)
+        // Final e 3º (F5): 8 países Sequenciais (Ciclo)
         elseif (stripos($inputPhaseLabel, 'Final') !== false || stripos($inputPhaseLabel, 'F5') !== false) {
             $customLogicApplied = true;
             $totalCountries = count($basePool); // Deve ser 8
-            
+
             // Sorteia um índice de início aleatório (0 a 7)
             $startIndex = rand(0, $totalCountries - 1);
-            
+
             // Gera a lista sequencial a partir do índice sorteado (wrap-around)
             for ($i = 0; $i < $totalCountries; $i++) {
                 $idx = ($startIndex + $i) % $totalCountries;
@@ -179,7 +587,7 @@ try {
         // --- REGRA EXCLUSIVA TORNEIO 110 ---
         $customLogicApplied = true;
         global $tracks_110_pit, $tracks_110_nopit;
-        
+
         if (stripos($inputPhaseLabel, 'F1') !== false || stripos($inputPhaseLabel, 'Grupos') !== false) {
             $poolPit = $tracks_110_pit; shuffle($poolPit); $selectedPit = array_slice($poolPit, 0, 5);
             $poolNoPit = $tracks_110_nopit; shuffle($poolNoPit); $selectedNoPit = array_slice($poolNoPit, 0, 5);
@@ -188,14 +596,14 @@ try {
                 if (isset($selectedNoPit[$i])) $drawResult[] = $selectedNoPit[$i] . " <span class='ml-2 text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded border border-green-200 font-bold'>SEM_PIT</span>";
             }
             $drawCount = 10;
-        } 
+        }
         elseif (stripos($inputPhaseLabel, 'F2') !== false || stripos($inputPhaseLabel, '8') !== false) {
             $poolPit = $tracks_110_pit; shuffle($poolPit); $poolNoPit = $tracks_110_nopit; shuffle($poolNoPit);
             $group1 = (function($p, $np) { $r=[]; $m=max(count($p),count($np)); for($i=0;$i<$m;$i++){ if(isset($p[$i])) $r[]=$p[$i]." <span class='ml-2 text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded border border-red-200 font-bold'>COM_PIT</span>"; if(isset($np[$i])) $r[]=$np[$i]." <span class='ml-2 text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded border border-green-200 font-bold'>SEM_PIT</span>"; } return $r; })(array_slice($poolPit,0,5), array_slice($poolNoPit,0,2));
             $group2 = (function($p, $np) { $r=[]; $m=max(count($p),count($np)); for($i=0;$i<$m;$i++){ if(isset($p[$i])) $r[]=$p[$i]." <span class='ml-2 text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded border border-red-200 font-bold'>COM_PIT</span>"; if(isset($np[$i])) $r[]=$np[$i]." <span class='ml-2 text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded border border-green-200 font-bold'>SEM_PIT</span>"; } return $r; })(array_slice($poolPit,5,4), array_slice($poolNoPit,2,3));
             $drawResult = array_merge($group1, $group2);
             $drawCount = 14;
-        } 
+        }
         elseif (stripos($inputPhaseLabel, 'F3') !== false || stripos($inputPhaseLabel, '4') !== false) {
             $poolPit = $tracks_110_pit; shuffle($poolPit); $poolNoPit = $tracks_110_nopit; shuffle($poolNoPit);
             $group1 = (function($p, $np) { $r=[]; $m=max(count($p),count($np)); for($i=0;$i<$m;$i++){ if(isset($p[$i])) $r[]=$p[$i]." <span class='ml-2 text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded border border-red-200 font-bold'>COM_PIT</span>"; if(isset($np[$i])) $r[]=$np[$i]." <span class='ml-2 text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded border border-green-200 font-bold'>SEM_PIT</span>"; } return $r; })(array_slice($poolPit,0,5), array_slice($poolNoPit,0,3));
@@ -220,18 +628,18 @@ try {
         }
     }
     elseif (in_array($tournamentId, [101, 107, 112, 116])) {
-        global $countries_tg1; 
+        global $countries_tg1;
         $basePool = $countries_tg1;
-        
+
         if (stripos($inputPhaseLabel, 'F1') !== false || stripos($inputPhaseLabel, 'Grupos') !== false) {
-            $drawCount = 6; 
+            $drawCount = 6;
             $formatAsRounds = true;
-        } 
+        }
         elseif (stripos($inputPhaseLabel, 'F5') !== false || stripos($inputPhaseLabel, 'Final e 3') !== false) {
             $drawCount = 4;
         }
         else {
-            $drawCount = 3; 
+            $drawCount = 3;
         }
     }
     elseif ($tournamentId == 401) {
@@ -529,9 +937,9 @@ try {
     }
     else {
         // Fallback genérico
-         global $tracks_tg1;
-         $basePool = $tracks_tg1;
-         $drawCount = 12; 
+        global $tracks_tg1;
+        $basePool = $tracks_tg1;
+        $drawCount = 12;
     }
 
     if ($isTg3000Tournament) {
@@ -740,17 +1148,17 @@ try {
             $drawCount = 16;
         }
         else {
-            throw new Exception('Fase não suportada para este torneio. Use Fase de Grupos, 4° de Final, Semifinal ou Final e 3°.');
+            throw new Exception('Fase não suportada para este torneio. Use Fase de Grupos, 4ª de Final, Semifinal ou Final e 3º.');
         }
     }
 
     // --- LÓGICA DE SORTEIO PADRÃO (Se não foi customizada acima) ---
-    $nextUsedItemsState = $usedItems; 
+    $nextUsedItemsState = $usedItems;
     $residue = [];
 
     if (!$customLogicApplied) {
         $availablePool = array_diff($basePool, $usedItems);
-        
+
         // Lógica Cíclica
         if ($allowCyclicPot && count($availablePool) < $drawCount) {
             Logger::info("ProcessDraw: Pote cíclico ativado");
@@ -758,14 +1166,14 @@ try {
             foreach ($residue as $item) {
                 $drawResult[] = $item;
             }
-            $nextUsedItemsState = []; 
+            $nextUsedItemsState = [];
             $availablePool = $basePool;
             $availablePool = array_diff($availablePool, $residue);
         }
 
         $slotsRemaining = $drawCount - count($drawResult);
-        $itemsDrawnFromNewPool = []; 
-        
+        $itemsDrawnFromNewPool = [];
+
         // Regras Especiais (Países)
         if ($specialRules && $slotsRemaining > 0) {
             $requiredCountries = ['USA', 'SAM', 'JAP', 'GER', 'SCN', 'FRA', 'ITA', 'UKG'];
@@ -775,7 +1183,7 @@ try {
                 if (isset($parts[1])) $presentCountries[] = $parts[1];
             }
             $missingCountries = array_diff($requiredCountries, $presentCountries);
-            
+
             foreach ($missingCountries as $country) {
                 if ($slotsRemaining <= 0) break;
                 $countryTracks = array_filter($availablePool, function($t) use ($country) {
@@ -843,7 +1251,7 @@ try {
         } else {
             $nextUsedItemsState = $currentState['usedItemsKnockout'] ?? ($currentState['usedItems'] ?? []);
         }
-    } 
+    }
     else {
         // Lógica customizada (110 e 117-F5) não persiste ciclo de usados da mesma forma
     }
@@ -864,9 +1272,9 @@ try {
         'phase' => $phaseToSave,
         'drawnItems' => $displayItems
     ];
-    
+
     FileManager::saveGranularDraw($tournamentId, $drawData, $nextUsedItemsState);
-    
+
     if ($shouldUpdateRoundCounter) {
         $finalState = FileManager::readJson($stateFile);
         $finalState['roundCounter'] = $nextRound;
@@ -882,6 +1290,36 @@ try {
     if ($isTg3000Tournament && $isTg3000CyclePhase) {
         $finalState = FileManager::readJson($stateFile);
         $finalState['usedItemsTg3000Cycle'] = $nextUsedItemsState;
+        FileManager::writeJson($stateFile, $finalState);
+    }
+    if ($isTg2201Tournament) {
+        $finalState = FileManager::readJson($stateFile);
+        $finalState['usedItemsTg2Pairs201'] = $usedItemsTg2Pairs201;
+        FileManager::writeJson($stateFile, $finalState);
+    }
+    if ($isTg2202Tournament) {
+        $finalState = FileManager::readJson($stateFile);
+        $finalState['usedItemsTg2Cenarios202'] = $usedItemsTg2Cenarios202;
+        FileManager::writeJson($stateFile, $finalState);
+    }
+    if ($isTg2203Tournament) {
+        $finalState = FileManager::readJson($stateFile);
+        $finalState['usedItemsTg2Countries203'] = $usedItemsTg2Countries203;
+        FileManager::writeJson($stateFile, $finalState);
+    }
+    if ($isTg2204Tournament) {
+        $finalState = FileManager::readJson($stateFile);
+        $finalState['usedItemsTg2Pairs204'] = $usedItemsTg2Pairs204;
+        FileManager::writeJson($stateFile, $finalState);
+    }
+    if ($isTg2205Tournament) {
+        $finalState = FileManager::readJson($stateFile);
+        $finalState['usedItemsTg2Countries205'] = $usedItemsTg2Countries205;
+        FileManager::writeJson($stateFile, $finalState);
+    }
+    if ($isTg2206Tournament) {
+        $finalState = FileManager::readJson($stateFile);
+        $finalState['usedItemsTg2Countries206'] = $usedItemsTg2Countries206;
         FileManager::writeJson($stateFile, $finalState);
     }
 
@@ -913,7 +1351,7 @@ try {
     Logger::success("ProcessDraw: Sorteio ID $tournamentId ($phaseToSave) finalizado.");
 
     echo json_encode([
-        'status' => 'success', 
+        'status' => 'success',
         'data' => $displayItems,
         'phase' => $phaseToSave,
         'used_count' => count($nextUsedItemsState)

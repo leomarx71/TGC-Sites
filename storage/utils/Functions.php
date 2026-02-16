@@ -25,10 +25,10 @@ class Logger {
 
         $date = date('Y-m-d H:i:s');
         $pid = getmypid(); // Útil para identificar requisições simultâneas
-        
-        // Formato: [DATA] [PID] [NIVEL] MENSAGEM
+
+        // Formato: [DATA] [PID] [NÍVEL] MENSAGEM
         $logMessage = "[$date] [$pid] [$level] $msg" . PHP_EOL;
-        
+
         // Grava no arquivo
         file_put_contents(LOG_FILE, $logMessage, FILE_APPEND);
     }
@@ -37,9 +37,9 @@ class Logger {
     public static function error($msg) { self::log($msg, 'ERROR'); }
     public static function success($msg) { self::log($msg, 'SUCCESS'); }
     public static function warning($msg) { self::log($msg, 'WARNING'); }
-    public static function debug($msg) { 
+    public static function debug($msg) {
         if (defined('DEBUG_MODE') && DEBUG_MODE) {
-            self::log($msg, 'DEBUG'); 
+            self::log($msg, 'DEBUG');
         }
     }
 }
@@ -53,9 +53,9 @@ function render_button($id, $label, $onclick, $color = 'blue', $icon = null) {
     if ($color == 'indigo') $colorClass = "bg-indigo-600 hover:bg-indigo-700";
     if ($color == 'green') $colorClass = "bg-green-600 hover:bg-green-700";
     if ($color == 'purple') $colorClass = "bg-purple-600 hover:bg-purple-700";
-    
+
     $iconHtml = $icon ? "<i class='fas fa-{$icon} mr-2'></i>" : "";
-    
+
     echo "
     <button id='{$id}' onclick=\"{$onclick}\" class='{$colorClass} text-white font-bold py-2 px-4 rounded shadow transition-all duration-200 flex items-center justify-center transform hover:scale-105'>
         {$iconHtml} {$label}
@@ -68,50 +68,59 @@ function render_tournament_card($id, $title, $subtitle, $action_function) {
     // ESTRUTURA ATUALIZADA: 'title' agora é a SIGLA (F0, F1...) e 'label' é o NOME (Eliminatórias...)
     $phases = [];
 
-    // CASO 1: Torneios de Rodadas (102, 118 e 106)
-    if ($id == 102 || $id == 118 || $id == 106) {
+    // CASO 1: Torneios de Rodadas (102, 118, 106 e 204)
+    if ($id == 102 || $id == 118 || $id == 106 || $id == 204) {
         $phases = [
             ['title' => 'F6', 'label' => 'Rodada', 'color' => COLOR_F6_BG, 'text' => COLOR_F6_TXT]
         ];
-    } 
-    // CASO 2: Torneio 109 (Com 8° de Final)
+    }
+    // CASO 2: Torneio 109 (Com 8º de Final)
     elseif ($id == 109) {
         $phases = [
             ['title' => 'F0', 'label' => 'Eliminatórias',  'color' => COLOR_F0_BG, 'text' => COLOR_F0_TXT],
-            ['title' => 'F2', 'label' => '8° de Final',    'color' => COLOR_F2_BG, 'text' => COLOR_F2_TXT], 
-            ['title' => 'F3', 'label' => '4° de Final',    'color' => COLOR_F3_BG, 'text' => COLOR_F3_TXT], 
-            ['title' => 'F4', 'label' => 'Semifinal',      'color' => COLOR_F4_BG, 'text' => COLOR_F4_TXT], 
-            ['title' => 'F5', 'label' => 'Final e 3°',     'color' => COLOR_F5_BG, 'text' => COLOR_F5_TXT]
+            ['title' => 'F2', 'label' => '8º de Final',    'color' => COLOR_F2_BG, 'text' => COLOR_F2_TXT],
+            ['title' => 'F3', 'label' => '4º de Final',    'color' => COLOR_F3_BG, 'text' => COLOR_F3_TXT],
+            ['title' => 'F4', 'label' => 'Semifinal',      'color' => COLOR_F4_BG, 'text' => COLOR_F4_TXT],
+            ['title' => 'F5', 'label' => 'Final e 3º',     'color' => COLOR_F5_BG, 'text' => COLOR_F5_TXT]
         ];
     }
-    // CASO 3: Torneio 117 (Sem 8° de Final)
+    // CASO 3: Torneio 117 (Sem 8º de Final)
     elseif ($id == 117) {
         $phases = [
             ['title' => 'F0', 'label' => 'Eliminatórias',  'color' => COLOR_F0_BG, 'text' => COLOR_F0_TXT],
-            // Pula F2 (8° de Final)
-            ['title' => 'F3', 'label' => '4° de Final',    'color' => COLOR_F3_BG, 'text' => COLOR_F3_TXT], 
-            ['title' => 'F4', 'label' => 'Semifinal',      'color' => COLOR_F4_BG, 'text' => COLOR_F4_TXT], 
-            ['title' => 'F5', 'label' => 'Final e 3°',     'color' => COLOR_F5_BG, 'text' => COLOR_F5_TXT]
+            // Pula F2 (8º de Final)
+            ['title' => 'F3', 'label' => '4º de Final',    'color' => COLOR_F3_BG, 'text' => COLOR_F3_TXT],
+            ['title' => 'F4', 'label' => 'Semifinal',      'color' => COLOR_F4_BG, 'text' => COLOR_F4_TXT],
+            ['title' => 'F5', 'label' => 'Final e 3º',     'color' => COLOR_F5_BG, 'text' => COLOR_F5_TXT]
         ];
     }
-    // CASO 4: La Liga (sem 8° de Final)
+    // CASO 4: Torneio 206 (apenas F0, F3, F4 e F5)
+    elseif ($id == 206) {
+        $phases = [
+            ['title' => 'F0', 'label' => 'Eliminatórias',  'color' => COLOR_F0_BG, 'text' => COLOR_F0_TXT],
+            ['title' => 'F3', 'label' => '4º de Final',    'color' => COLOR_F3_BG, 'text' => COLOR_F3_TXT],
+            ['title' => 'F4', 'label' => 'Semifinal',      'color' => COLOR_F4_BG, 'text' => COLOR_F4_TXT],
+            ['title' => 'F5', 'label' => 'Final e 3º',     'color' => COLOR_F5_BG, 'text' => COLOR_F5_TXT]
+        ];
+    }
+    // CASO 5: La Liga (sem 8º de Final)
     elseif (in_array($id, [103, 104, 105, 113, 114, 115])) {
         $phases = [
             ['title' => 'F1', 'label' => 'F. de Grupos',   'color' => COLOR_F1_BG, 'text' => COLOR_F1_TXT],
-            ['title' => 'F3', 'label' => '4° de Final',    'color' => COLOR_F3_BG, 'text' => COLOR_F3_TXT],
+            ['title' => 'F3', 'label' => '4º de Final',    'color' => COLOR_F3_BG, 'text' => COLOR_F3_TXT],
             ['title' => 'F4', 'label' => 'Semifinal',      'color' => COLOR_F4_BG, 'text' => COLOR_F4_TXT],
-            ['title' => 'F5', 'label' => 'Final e 3°',     'color' => COLOR_F5_BG, 'text' => COLOR_F5_TXT]
+            ['title' => 'F5', 'label' => 'Final e 3º',     'color' => COLOR_F5_BG, 'text' => COLOR_F5_TXT]
         ];
     }
-    // CASO 5: Padrão para os demais (Sem Eliminatórias, Com F1 e F2)
+    // CASO 6: Padrão para os demais (Sem Eliminatórias, Com F1 e F2)
     else {
         $phases = [
             // Pula F0
-            ['title' => 'F1', 'label' => 'F. de Grupos',   'color' => COLOR_F1_BG, 'text' => COLOR_F1_TXT], 
-            ['title' => 'F2', 'label' => '8° de Final',    'color' => COLOR_F2_BG, 'text' => COLOR_F2_TXT], 
-            ['title' => 'F3', 'label' => '4° de Final',    'color' => COLOR_F3_BG, 'text' => COLOR_F3_TXT], 
-            ['title' => 'F4', 'label' => 'Semifinal',      'color' => COLOR_F4_BG, 'text' => COLOR_F4_TXT], 
-            ['title' => 'F5', 'label' => 'Final e 3°',     'color' => COLOR_F5_BG, 'text' => COLOR_F5_TXT]  
+            ['title' => 'F1', 'label' => 'F. de Grupos',   'color' => COLOR_F1_BG, 'text' => COLOR_F1_TXT],
+            ['title' => 'F2', 'label' => '8º de Final',    'color' => COLOR_F2_BG, 'text' => COLOR_F2_TXT],
+            ['title' => 'F3', 'label' => '4º de Final',    'color' => COLOR_F3_BG, 'text' => COLOR_F3_TXT],
+            ['title' => 'F4', 'label' => 'Semifinal',      'color' => COLOR_F4_BG, 'text' => COLOR_F4_TXT],
+            ['title' => 'F5', 'label' => 'Final e 3º',     'color' => COLOR_F5_BG, 'text' => COLOR_F5_TXT]
         ];
     }
 
@@ -158,15 +167,15 @@ function render_tournament_card($id, $title, $subtitle, $action_function) {
             <label class='text-xs font-bold text-gray-400 uppercase mb-1 block'>Selecione a Fase:</label>
             <div class='grid grid-cols-3 gap-2' id='phases-{$id}'>
                 ";
-                foreach ($phases as $idx => $p) {
-                    echo "<button 
+    foreach ($phases as $idx => $p) {
+        echo "<button 
                             onclick=\"app.selectPhase({$id}, {$idx}, '{$p['label']}')\" 
                             class='phase-btn-{$id} {$p['color']} {$p['text']} text-[10px] py-2 rounded shadow-sm font-bold transition-transform active:scale-95 border-2 border-transparent hover:border-white/30 truncate'
                             title='{$p['title']}'
                             data-phase-name='{$p['label']}'>
                             {$p['label']}
                           </button>";
-                }
+    }
     echo "
             </div>
             <div id='selected-phase-display-{$id}' class='text-xs text-center font-bold mt-1 text-indigo-600 h-4'></div>
@@ -200,10 +209,10 @@ function render_section_header($title, $icon, $showLegend = false) {
                 <ul class='space-y-1.5'>
                     <li class='flex items-center gap-2'><span class='w-6 text-center {$badges['F0']} rounded text-[10px] font-bold py-0.5'>F0</span> Eliminatórias</li>
                     <li class='flex items-center gap-2'><span class='w-6 text-center {$badges['F1']} rounded text-[10px] font-bold py-0.5'>F1</span> F. de Grupos</li>
-                    <li class='flex items-center gap-2'><span class='w-6 text-center {$badges['F2']} rounded text-[10px] font-bold py-0.5'>F2</span> 8° de Final</li>
-                    <li class='flex items-center gap-2'><span class='w-6 text-center {$badges['F3']} rounded text-[10px] font-bold py-0.5'>F3</span> 4° de Final</li>
+                    <li class='flex items-center gap-2'><span class='w-6 text-center {$badges['F2']} rounded text-[10px] font-bold py-0.5'>F2</span> 8º de Final</li>
+                    <li class='flex items-center gap-2'><span class='w-6 text-center {$badges['F3']} rounded text-[10px] font-bold py-0.5'>F3</span> 4º de Final</li>
                     <li class='flex items-center gap-2'><span class='w-6 text-center {$badges['F4']} rounded text-[10px] font-bold py-0.5'>F4</span> Semifinal</li>
-                    <li class='flex items-center gap-2'><span class='w-6 text-center {$badges['F5']} rounded text-[10px] font-bold py-0.5'>F5</span> Final e 3°</li>
+                    <li class='flex items-center gap-2'><span class='w-6 text-center {$badges['F5']} rounded text-[10px] font-bold py-0.5'>F5</span> Final e 3º</li>
                     <li class='flex items-center gap-2'><span class='w-6 text-center {$badges['F6']} rounded text-[10px] font-bold py-0.5'>F6</span> Rodada</li>
                 </ul>
                 <div class='absolute -top-1 left-2 w-2 h-2 bg-slate-800 rotate-45 border-l border-t border-slate-700'></div>
@@ -226,10 +235,10 @@ function render_section_header($title, $icon, $showLegend = false) {
 }
 
 function render_nav_item($id, $label, $icon, $isActive = false) {
-    $activeClass = $isActive 
-        ? "text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50" 
+    $activeClass = $isActive
+        ? "text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50"
         : "text-gray-500 hover:text-indigo-500 hover:bg-gray-50";
-        
+
     echo "
     <button onclick=\"app.switchTab('{$id}')\" id='tab-btn-{$id}' class='w-full py-4 px-1 text-center font-medium text-sm focus:outline-none transition-colors duration-200 {$activeClass}'>
         <i class='fas fa-{$icon} mb-1 block text-lg'></i>
