@@ -8,6 +8,7 @@
 .env.local
 .env.*.local
 .env.backup
+sites/records/.env
 
 # Arquivos de dados e logs (sensível)
 storage/backups
@@ -30,5 +31,3 @@ Thumbs.db
 # Backup e temp
 *.bak
 *.tmp
-*~
-

@@ -8,6 +8,85 @@
 date_default_timezone_set('America/Sao_Paulo');
 session_start();
 
+function projectEnv() {
+    static $config = null;
+    if ($config !== null) return $config;
+
+    $config = [];
+    $envFile = __DIR__ . '/.env';
+    if (is_file($envFile)) {
+        $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        if ($lines === false) throw new Exception('Não foi possível ler a configuração do servidor.');
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '' || $line[0] === '#') continue;
+            $separator = strpos($line, '=');
+            if ($separator === false) continue;
+            $key = trim(substr($line, 0, $separator));
+            $value = trim(substr($line, $separator + 1));
+            if (strlen($value) >= 2 && (($value[0] === '"' && substr($value, -1) === '"') || ($value[0] === "'" && substr($value, -1) === "'"))) {
+                $value = substr($value, 1, -1);
+            }
+            $config[$key] = $value;
+        }
+    }
+
+    return $config;
+}
+
+function projectEnvValue($key) {
+    $config = projectEnv();
+    if (array_key_exists($key, $config)) return $config[$key] !== '' ? $config[$key] : null;
+    $value = getenv($key);
+    return $value === false || $value === '' ? null : $value;
+}
+
+function verifyAdminPassword($password) {
+    $hash = projectEnvValue('TGC_ADMIN_PASSWORD_HASH');
+    if (!is_string($hash) || $hash === '' || !is_string($password)) return false;
+    $info = password_get_info($hash);
+    $defaultInfo = password_get_info(password_hash(random_bytes(32), PASSWORD_DEFAULT));
+    return !empty($info['algo']) && $info['algoName'] === $defaultInfo['algoName'] && password_verify($password, $hash);
+}
+
+function adminSessionActive() {
+    if (empty($_SESSION['tgc_admin_authenticated']) || (int) ($_SESSION['tgc_admin_last_activity'] ?? 0) < time() - 1800) {
+        unset($_SESSION['tgc_admin_authenticated'], $_SESSION['tgc_admin_last_activity']);
+        return false;
+    }
+    $_SESSION['tgc_admin_last_activity'] = time();
+    return true;
+}
+
+function isAdminAuthorized() {
+    return adminSessionActive()
+        && isset($_SESSION['tgc_admin_csrf'], $_POST['admin_csrf'])
+        && hash_equals($_SESSION['tgc_admin_csrf'], (string) $_POST['admin_csrf']);
+}
+
+function adminCsrfToken() {
+    if (empty($_SESSION['tgc_admin_csrf'])) $_SESSION['tgc_admin_csrf'] = bin2hex(random_bytes(32));
+    return $_SESSION['tgc_admin_csrf'];
+}
+
+function maskEmailForDisplay($email) {
+    $parts = explode('@', (string) $email, 2);
+    if (count($parts) !== 2) return '';
+    $local = $parts[0];
+    $maskLength = strlen($local) <= 10 ? 4 : (strlen($local) <= 15 ? 5 : 7);
+    $maskLength = min(strlen($local), $maskLength);
+    $start = (int) floor((strlen($local) - $maskLength) / 2);
+    return substr($local, 0, $start) . str_repeat('*', $maskLength) . substr($local, $start + $maskLength) . '@' . $parts[1];
+}
+
+function getResetEligiblePilots($pilots) {
+    $eligible = array_values(array_filter($pilots, function ($pilot) {
+        return ($pilot['activePilot'] ?? false) === true && trim((string) ($pilot['email'] ?? '')) !== '';
+    }));
+    usort($eligible, function ($a, $b) { return strcasecmp((string) ($a['name'] ?? ''), (string) ($b['name'] ?? '')); });
+    return $eligible;
+}
+
 // ============================================================================
 // VALIDAÇÃO DE PIN VIA API (FRONTEND)
 // ============================================================================
@@ -67,10 +146,16 @@ class PointsCalculator {
 }
 
 class PilotManager {
-    private $dataFile = 'data/pilots.json';
+    private $dataFile;
+    private $mailerInstance;
+
+    public function __construct($dataFile = null, $mailer = null) {
+        $this->dataFile = $dataFile ?: __DIR__ . '/data/pilots.json';
+        $this->mailerInstance = $mailer;
+    }
 
     public function generatePIN() {
-        $pin = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT);
+        $pin = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
         return [
                 'pin' => $pin,
                 'pin_b64' => base64_encode($pin)
@@ -87,6 +172,7 @@ class PilotManager {
 
         foreach ($pilots as $pilot) {
             if (!isset($pilot['phoneNumberID']) || (int) $pilot['phoneNumberID'] !== $phoneNumberID) continue;
+            if (($pilot['activePilot'] ?? false) !== true) return false;
 
             $storedPIN = base64_decode((string) ($pilot['pinB64'] ?? ''), true);
 
@@ -106,106 +192,178 @@ class PilotManager {
         $pilots = $this->loadPilots();
 
         foreach ($pilots as $pilot) {
-            if (isset($pilot['phoneNumberID']) && (int) $pilot['phoneNumberID'] === $phoneNumberID) return $pilot;
+            if (isset($pilot['phoneNumberID']) && (int) $pilot['phoneNumberID'] === $phoneNumberID) {
+                if (($pilot['activePilot'] ?? false) !== true) throw new Exception('Este piloto está inativo.');
+                return $pilot;
+            }
         }
 
         throw new Exception('Piloto não encontrado pelo Phone ID.');
     }
 
     public function registerPilot($data) {
-        $pilots = $this->loadPilots();
+        $name = trim((string) ($data['name'] ?? ''));
+        $nickname = trim((string) ($data['nicknameTGC'] ?? ''));
+        $phoneNumberID = trim((string) ($data['phoneNumberID'] ?? ''));
+        $email = trim((string) ($data['email'] ?? ''));
 
-        foreach ($pilots as $p) {
-            if ($p['phoneNumberID'] === $data['phoneNumberID']) {
-                throw new Exception("Número de telefone/ID já cadastrado.");
-            }
-            if ($p['nicknameTGC'] === $data['nicknameTGC']) {
-                throw new Exception("Nickname já está em uso.");
-            }
+        if ($name === '' || strlen($name) > 120 || $nickname === '' || strlen($nickname) > 60 || strlen($email) > 254 || !preg_match('/^[0-9]{8,15}$/', $phoneNumberID) || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            throw new Exception('Preencha nome, nickname, telefone com DDI e e-mail válidos.');
         }
 
-        $pinData = $this->generatePIN();
-        $nextId = count($pilots) > 0 ? max(array_column($pilots, 'id')) + 1 : 1;
+        $storedPhone = (string) (int) $phoneNumberID === $phoneNumberID ? (int) $phoneNumberID : $phoneNumberID;
+        $pilot = $this->withLockedPilots(function (&$pilots) use ($name, $nickname, $phoneNumberID, $storedPhone, $email) {
+            foreach ($pilots as $existing) {
+                if ($this->normalizePhone($existing['phoneNumberID'] ?? '') === $this->normalizePhone($phoneNumberID)) {
+                    throw new Exception('Este telefone já está cadastrado.');
+                }
+                if (strcasecmp(trim((string) ($existing['nicknameTGC'] ?? '')), $nickname) === 0) {
+                    throw new Exception('Este nickname já está cadastrado.');
+                }
+                if (strcasecmp(trim((string) ($existing['email'] ?? '')), $email) === 0) {
+                    throw new Exception('Este e-mail já está cadastrado.');
+                }
+            }
 
-        $pilot = [
-                'id' => $nextId,
-                'phoneNumberID' => $data['phoneNumberID'],
-                'nicknameTGC' => $data['nicknameTGC'],
-                'name' => $data['name'],
-                'email' => $data['email'],
-                'pinB64' => $pinData['pin_b64'],
-                'activePilot' => true,
-                'createdAt' => date('Y-m-d\TH:i:s\Z'),
-                'pinUpdatedAt' => date('Y-m-d\TH:i:s\Z')
-        ];
+            $last = count($pilots) ? $pilots[count($pilots) - 1] : null;
+            if ($last === null) {
+                $nextId = 1;
+            } elseif (!isset($last['id']) || !is_numeric($last['id'])) {
+                throw new Exception('Conflito: o último piloto não possui um ID numérico para calcular o próximo.');
+            } else {
+                $nextId = (int) $last['id'] + 1;
+            }
+            foreach ($pilots as $existing) {
+                if (isset($existing['id']) && (int) $existing['id'] === $nextId) {
+                    throw new Exception('Conflito: o próximo ID calculado já existe. Avise um administrador.');
+                }
+            }
 
-        $pilots[] = $pilot;
-        $this->savePilots($pilots);
+            $newPilot = [
+                    'id' => $nextId,
+                    'phoneNumberID' => $storedPhone,
+                    'nicknameTGC' => $nickname,
+                    'name' => $name,
+                    'email' => $email,
+                    'pinB64' => '',
+                    'activePilot' => false,
+                    'createdAt' => gmdate('Y-m-d\TH:i:s\Z')
+            ];
+            $pilots[] = $newPilot;
+            return $newPilot;
+        }, true);
 
-        return array_merge($pilot, ['pin_clear' => $pinData['pin']]);
+        $html = '<h2>Solicitação de cadastro de piloto</h2>'
+            . '<p><strong>Nome:</strong> ' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '</p>'
+            . '<p><strong>Nickname:</strong> ' . htmlspecialchars($nickname, ENT_QUOTES, 'UTF-8') . '</p>'
+            . '<p><strong>Telefone:</strong> ' . htmlspecialchars($phoneNumberID, ENT_QUOTES, 'UTF-8') . '</p>'
+            . '<p><strong>E-mail:</strong> ' . htmlspecialchars($email, ENT_QUOTES, 'UTF-8') . '</p>'
+            . '<p><strong>ID criado:</strong> ' . (int) $pilot['id'] . '</p>'
+            . '<p><a href="https://topgearchampionships.com/sites/records/TGC-PolePosition.php">Abrir TGC Pole Position</a></p>'
+            . '<p>Entre na tab Admin &gt; Gestão de pilotos, analise o pedido e aprove ou recuse o cadastro.</p>';
+        $text = "Solicitação de cadastro de piloto\nNome: {$name}\nNickname: {$nickname}\nTelefone: {$phoneNumberID}\nE-mail: {$email}\nID criado: {$pilot['id']}\n"
+            . "Acesse https://topgearchampionships.com/sites/records/TGC-PolePosition.php e entre na tab Admin > Gestão de pilotos para analisar e aprovar ou não o pedido.";
+        try {
+            $sent = $this->mailer()->sendAdminNotification('TGC - Nova solicitação de cadastro de piloto', $html, $text);
+        } catch (Exception $error) {
+            $sent = ['success' => false];
+        }
+        if (empty($sent['success'])) {
+            return ['success' => false, 'message' => 'Seu pedido foi registrado, mas a notificação automática aos administradores falhou. Avise-os por outro canal ou envie e-mail para admins@topgearchampionships.com.'];
+        }
+        return ['success' => true, 'message' => 'Pedido de cadastro registrado e encaminhado para análise dos administradores.'];
     }
 
-    public function requestNewPIN($phoneNumberID, $email) {
-        $phoneNumberID = filter_var($phoneNumberID, FILTER_VALIDATE_INT);
-        $email = trim((string) $email);
+    public function requestNewPIN($pilotId) {
+        $pilotId = filter_var($pilotId, FILTER_VALIDATE_INT);
+        if ($pilotId === false || $pilotId < 1) throw new Exception('Identificador de piloto inválido.');
 
-        if ($phoneNumberID === false) {
-            return ['error' => 'ID do piloto inválido.'];
-        }
-
-        if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
-            return ['error' => 'Informe um e-mail válido.'];
-        }
-
-        $pilots = $this->loadPilots();
-
-        if (!is_array($pilots)) {
-            throw new Exception('Erro interno: não foi possível carregar os pilotos.');
-        }
-
-        $pilotIndex = null;
-
-        foreach ($pilots as $index => $pilot) {
-            if (isset($pilot['phoneNumberID']) && $pilot['phoneNumberID'] === $phoneNumberID) {
-                $pilotIndex = $index;
-                break;
+        $pilot = $this->withLockedPilots(function (&$pilots) use ($pilotId) {
+            foreach ($pilots as &$entry) {
+                if ((int) ($entry['id'] ?? 0) !== $pilotId) continue;
+                if (empty($entry['activePilot'])) throw new Exception('Pilotos inativos não podem solicitar reset de PIN.');
+                $email = trim((string) ($entry['email'] ?? ''));
+                if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) throw new Exception('Não há um e-mail cadastrado válido para este piloto.');
+                $pinData = $this->generatePIN();
+                $previous = [
+                    'pinB64' => $entry['pinB64'] ?? null,
+                    'pinUpdatedAt' => $entry['pinUpdatedAt'] ?? null
+                ];
+                $entry['pinB64'] = $pinData['pin_b64'];
+                $entry['pinUpdatedAt'] = gmdate('Y-m-d\TH:i:s\Z');
+                return ['pilot' => $entry, 'previous' => $previous, 'pin' => $pinData];
             }
+            throw new Exception('Piloto não encontrado.');
+        }, true);
+
+        $pilotData = $pilot['pilot'];
+        $pinData = $pilot['pin'];
+        $email = trim((string) $pilotData['email']);
+        try {
+            $sent = $this->mailer()->sendRecoveryEmail($email, (string) $pilotData['name'], $pinData['pin']);
+        } catch (Exception $error) {
+            $sent = ['success' => false];
+        }
+        if (empty($sent['success'])) {
+            try {
+                $restored = $this->restorePin($pilotId, $pinData['pin_b64'], $pilot['previous']);
+            } catch (Exception $error) {
+                throw new Exception('Falha ao enviar o PIN e ao restaurar o anterior. O novo PIN permanece salvo; solicite um novo reset após corrigir o envio.');
+            }
+            $state = $restored ? 'O PIN anterior foi mantido.' : 'Não foi possível restaurar o PIN anterior; o novo PIN permanece salvo.';
+            throw new Exception('Falha ao enviar o PIN. ' . $state);
         }
 
-        if ($pilotIndex === null) {
-            return ['error' => 'Piloto não encontrado para o ID: ' . $phoneNumberID];
-        }
-
-        if (!file_exists('TGCMailer.php')) {
-            throw new Exception('Erro interno: Arquivo TGCMailer.php não encontrado.');
-        }
-
-        $pinData = $this->generatePIN();
-
-        // Atualiza os dados do piloto no mesmo registro.
-        $pilots[$pilotIndex]['email'] = $email;
-        $pilots[$pilotIndex]['pinB64'] = $pinData['pin_b64'];
-        $pilots[$pilotIndex]['pinUpdatedAt'] = gmdate('Y-m-d\TH:i:s\Z');
-
-        $this->savePilots($pilots);
-
-        require_once 'TGCMailer.php';
-
-        $mailer = new TGCMailer();
-        $result = $mailer->sendRecoveryEmail($email, $pilots[$pilotIndex]['name'], $pinData['pin']);
-
-        if (!empty($result['success'])) {
-            return ['success' => true, 'message' => 'Novo PIN enviado para: ' . $this->maskEmail($email)];
-        }
-
-        throw new Exception('Dados salvos, mas houve erro ao enviar o e-mail: ' . ($result['error'] ?? 'erro desconhecido'));
+        return ['success' => true, 'message' => 'Novo PIN enviado para: ' . maskEmailForDisplay($email)];
     }
 
-    private function maskEmail($email) {
-        $parts = explode('@', $email);
-        $name = implode('@', array_slice($parts, 0, count($parts)-1));
-        $len = floor(strlen($name)/2);
-        return substr($name, 0, $len) . str_repeat('*', $len) . "@" . end($parts);
+    public function setPilotActive($pilotId, $active) {
+        $pilotId = filter_var($pilotId, FILTER_VALIDATE_INT);
+        if ($pilotId === false || $pilotId < 1) throw new Exception('Identificador de piloto inválido.');
+
+        $pilot = $this->withLockedPilots(function (&$pilots) use ($pilotId, $active) {
+            foreach ($pilots as &$entry) {
+                if ((int) ($entry['id'] ?? 0) !== $pilotId) continue;
+                if ((($entry['activePilot'] ?? false) === true) === $active) throw new Exception('O estado do piloto já foi alterado. Atualize a página.');
+                if (!$active) {
+                    $entry['activePilot'] = false;
+                    return ['pilot' => $entry, 'pin' => null, 'previous' => null];
+                }
+
+                $email = trim((string) ($entry['email'] ?? ''));
+                if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) throw new Exception('Não é possível ativar: o piloto não possui e-mail válido.');
+                $existingPin = base64_decode((string) ($entry['pinB64'] ?? ''), true);
+                $needsFirstPin = $existingPin === false || !preg_match('/^[0-9]{6}$/', $existingPin);
+                $previous = ['pinB64' => $entry['pinB64'] ?? null, 'pinUpdatedAt' => $entry['pinUpdatedAt'] ?? null];
+                $pinData = $needsFirstPin ? $this->generatePIN() : null;
+                if ($needsFirstPin) {
+                    $entry['pinB64'] = $pinData['pin_b64'];
+                    $entry['pinUpdatedAt'] = gmdate('Y-m-d\TH:i:s\Z');
+                }
+                $entry['activePilot'] = true;
+                return ['pilot' => $entry, 'pin' => $needsFirstPin ? $pinData : null, 'previous' => $previous];
+            }
+            throw new Exception('Piloto não encontrado.');
+        }, true);
+
+        if (!$active || $pilot['pin'] === null) return ['success' => true, 'message' => $active ? 'Piloto reativado.' : 'Piloto desativado.'];
+
+        try {
+            $sent = $this->mailer()->sendRecoveryEmail(trim((string) $pilot['pilot']['email']), (string) $pilot['pilot']['name'], $pilot['pin']['pin']);
+        } catch (Exception $error) {
+            $sent = ['success' => false];
+        }
+        if (empty($sent['success'])) {
+            try {
+                $restored = $this->restoreActivation($pilotId, $pilot['pin']['pin_b64'], $pilot['previous']);
+            } catch (Exception $error) {
+                throw new Exception('Falha ao enviar o PIN e ao reverter a aprovação. O piloto permaneceu ativo com o PIN salvo; não recarregue para reenviar.');
+            }
+            if ($restored) throw new Exception('Falha ao enviar o PIN. O piloto permaneceu pendente e sem PIN ativo; a aprovação pode ser tentada novamente.');
+            throw new Exception('Falha ao enviar o PIN e ao reverter o estado: o piloto ficou ativo com o PIN salvo. Não recarregue para reenviar; confira o estado no painel.');
+        }
+
+        return ['success' => true, 'message' => 'Piloto ativado e PIN enviado para ' . maskEmailForDisplay($pilot['pilot']['email']) . '.'];
     }
 
     public function getAllPilots() {
@@ -213,49 +371,98 @@ class PilotManager {
     }
 
     private function loadPilots() {
-        if (!file_exists($this->dataFile)) {
-            $this->createDataDir();
-            return [];
-        }
-        $content = file_get_contents($this->dataFile);
-        if ($content === false) throw new Exception("Falha ao ler o arquivo {$this->dataFile}");
-        $data = json_decode($content, true);
-        if (json_last_error() !== JSON_ERROR_NONE) throw new Exception("JSON inválido em {$this->dataFile}: " . json_last_error_msg());
+        return $this->withLockedPilots(function (&$pilots) { return $pilots; }, false);
+    }
 
-        // Ensure array format
-        if (is_array($data) && count($data) > 0 && !isset($data[0])) {
-            // Auto-migrate old object to array if needed to prevent hard break
-            $migrated = [];
-            $id = 1;
-            foreach ($data as $nick => $p) {
-                $migrated[] = [
+    private function withLockedPilots($callback, $write) {
+        $directory = dirname($this->dataFile);
+        if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
+            throw new Exception('Falha ao criar diretório de dados dos pilotos.');
+        }
+        $lock = fopen($this->dataFile . '.lock', 'c');
+        if ($lock === false) throw new Exception('Falha ao abrir o bloqueio dos dados dos pilotos.');
+        $temporaryFile = null;
+        try {
+            if (!flock($lock, LOCK_EX)) throw new Exception('Falha ao bloquear os dados dos pilotos.');
+            $content = is_file($this->dataFile) ? file_get_contents($this->dataFile) : '';
+            if ($content === false) throw new Exception('Falha ao ler os dados dos pilotos.');
+            $pilots = $content === '' ? [] : json_decode($content, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($pilots)) throw new Exception('O arquivo de pilotos contém JSON inválido.');
+            if (count($pilots) > 0 && !isset($pilots[0])) {
+                $migrated = [];
+                $id = 1;
+                foreach ($pilots as $nickname => $pilot) {
+                    $migrated[] = [
                         'id' => $id++,
-                        'phoneNumberID' => $p['email'] ?? "migrated_".$id,
-                        'nicknameTGC' => $p['nickname'] ?? $nick,
-                        'name' => $p['real_name'] ?? '',
-                        'email' => $p['email'] ?? '',
-                        'pinB64' => $p['pin_b64'] ?? '',
-                        'activePilot' => $p['active_pilot'] ?? true,
-                        'createdAt' => date('Y-m-d\TH:i:s\Z'),
-                        'pinUpdatedAt' => date('Y-m-d\TH:i:s\Z')
-                ];
+                        'phoneNumberID' => $pilot['phoneNumberID'] ?? $pilot['email'] ?? '',
+                        'nicknameTGC' => $pilot['nicknameTGC'] ?? $pilot['nickname'] ?? $nickname,
+                        'name' => $pilot['name'] ?? $pilot['real_name'] ?? '',
+                        'email' => $pilot['email'] ?? '',
+                        'pinB64' => $pilot['pinB64'] ?? $pilot['pin_b64'] ?? '',
+                        'activePilot' => $pilot['activePilot'] ?? $pilot['active_pilot'] ?? true,
+                        'createdAt' => $pilot['createdAt'] ?? gmdate('Y-m-d\TH:i:s\Z')
+                    ];
+                }
+                $pilots = $migrated;
             }
-            return $migrated;
+            $result = $callback($pilots);
+            if ($write) {
+                $json = json_encode(array_values($pilots), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+                $temporaryFile = tempnam($directory, '.pilots-');
+                if ($temporaryFile === false) throw new Exception('Falha ao preparar a gravação dos pilotos.');
+                $written = file_put_contents($temporaryFile, $json, LOCK_EX);
+                if ($written !== strlen($json)) throw new Exception('Falha ao gravar os dados dos pilotos.');
+                if (!rename($temporaryFile, $this->dataFile)) throw new Exception('Falha ao substituir os dados dos pilotos.');
+                $temporaryFile = null;
+            }
+            return $result;
+        } catch (JsonException $error) {
+            throw new Exception('Não foi possível serializar os dados dos pilotos.');
+        } finally {
+            if ($temporaryFile !== null && is_file($temporaryFile)) unlink($temporaryFile);
+            flock($lock, LOCK_UN);
+            fclose($lock);
         }
-        return $data;
     }
 
-    private function savePilots($pilots) {
-        $this->createDataDir();
-        $written = file_put_contents($this->dataFile, json_encode($pilots, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-        if ($written === false) throw new Exception("Falha ao gravar no arquivo {$this->dataFile}");
+    private function normalizePhone($phone) {
+        $digits = preg_replace('/\D+/', '', (string) $phone);
+        return ltrim($digits, '0') ?: '0';
     }
 
-    private function createDataDir() {
-        if (!is_dir('data') && !mkdir('data', 0755, true)) {
-            throw new Exception("Falha ao criar diretório data");
-        }
+    private function mailer() {
+        if ($this->mailerInstance !== null) return $this->mailerInstance;
+        require_once __DIR__ . '/TGCMailer.php';
+        return new TGCMailer();
     }
+
+    private function restorePin($pilotId, $newPinB64, $previous) {
+        return $this->withLockedPilots(function (&$pilots) use ($pilotId, $newPinB64, $previous) {
+            foreach ($pilots as &$entry) {
+                if ((int) ($entry['id'] ?? 0) !== $pilotId) continue;
+                if (($entry['pinB64'] ?? null) !== $newPinB64) return false;
+                if ($previous['pinB64'] === null) unset($entry['pinB64']); else $entry['pinB64'] = $previous['pinB64'];
+                if ($previous['pinUpdatedAt'] === null) unset($entry['pinUpdatedAt']); else $entry['pinUpdatedAt'] = $previous['pinUpdatedAt'];
+                return true;
+            }
+            return false;
+        }, true);
+    }
+
+    private function restoreActivation($pilotId, $newPinB64, $previous) {
+        return $this->withLockedPilots(function (&$pilots) use ($pilotId, $newPinB64, $previous) {
+            foreach ($pilots as &$entry) {
+                if ((int) ($entry['id'] ?? 0) !== $pilotId) continue;
+                if (($entry['pinB64'] ?? null) !== $newPinB64 || empty($entry['activePilot'])) return false;
+                $entry['activePilot'] = false;
+                if ($previous['pinB64'] === null) unset($entry['pinB64']); else $entry['pinB64'] = $previous['pinB64'];
+                if ($previous['pinUpdatedAt'] === null) unset($entry['pinUpdatedAt']); else $entry['pinUpdatedAt'] = $previous['pinUpdatedAt'];
+                return true;
+            }
+            return false;
+        }, true);
+    }
+
 }
 
 class SeasonRankingManager {
@@ -755,6 +962,8 @@ class AdminPanel {
     private function createDataDir() { if (!is_dir('data')) mkdir('data', 0755, true); }
 }
 
+if (defined('TGC_POLE_POSITION_LIBRARY_ONLY')) return;
+
 // ============================================================================
 // PROCESSAMENTO DE AÇÕES
 // ============================================================================
@@ -778,7 +987,6 @@ $message = $_SESSION['flash_msg'] ?? '';
 $messageType = $_SESSION['flash_type'] ?? 'success';
 unset($_SESSION['flash_msg'], $_SESSION['flash_type']);
 
-$popupPIN = null;
 $popupEmailMessage = null;
 $popupSubmissionData = null;
 
@@ -795,35 +1003,48 @@ function redirectWithMessage($msg, $type = 'success') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['action'])) {
         switch ($_POST['action']) {
-            case 'register_pilot':
-                try {
-                    $result = $pilotManager->registerPilot([
-                            'phoneNumberID' => $_POST['phoneNumberID'],
-                            'nicknameTGC' => $_POST['nickname'],
-                            'name' => $_POST['real_name'],
-                            'email' => $_POST['email']
-                    ]);
-                    $popupPIN = $result['pin_clear'];
-                    $message = "✅ Piloto cadastrado com sucesso! PIN gerado.";
-                } catch (Exception $e) {
-                    $message = "❌ Erro ao cadastrar: " . $e->getMessage();
-                    $messageType = 'error';
-                }
-                break;
-
-            case 'request_new_pin':
-                try {
-                    $result = $pilotManager->requestNewPIN($_POST['phoneNumberID'],$_POST['email']);
-                    if (isset($result['error'])) {
-                        $message = "❌ " . $result['error'];
-                        $messageType = 'error';
-                    } else {
-                        $popupEmailMessage = $result['message'];
-                        $message = "✅ Solicitação de recuperação enviada.";
+                case 'admin_login':
+                    if (isset($_SESSION['tgc_admin_csrf'], $_POST['admin_csrf'])
+                        && hash_equals($_SESSION['tgc_admin_csrf'], (string) $_POST['admin_csrf'])
+                        && verifyAdminPassword($_POST['admin_password'] ?? '')) {
+                        session_regenerate_id(true);
+                        $_SESSION['tgc_admin_authenticated'] = true;
+                        $_SESSION['tgc_admin_last_activity'] = time();
+                        $_SESSION['tgc_admin_csrf'] = bin2hex(random_bytes(32));
+                        redirectWithMessage('Acesso administrativo autorizado.');
                     }
-                } catch (Exception $e) {
-                    $message = "❌ Erro: " . $e->getMessage();
+                    $message = '❌ Acesso administrativo não autorizado. Confira a configuração do servidor e a senha.';
                     $messageType = 'error';
+                    break;
+
+                case 'admin_logout':
+                    if (isAdminAuthorized()) {
+                        unset($_SESSION['tgc_admin_authenticated'], $_SESSION['tgc_admin_last_activity']);
+                        redirectWithMessage('Sessão administrativa encerrada.');
+                    }
+                    $message = '❌ Sessão administrativa inválida ou expirada.';
+                    $messageType = 'error';
+                    break;
+
+                case 'request_pilot_registration':
+                try {
+                        $result = $pilotManager->registerPilot($_POST);
+                        $message = $result['message'];
+                        $messageType = $result['success'] ? 'success' : 'error';
+                    } catch (Exception $e) {
+                        $message = "❌ Não foi possível registrar o pedido: " . $e->getMessage();
+                        $messageType = 'error';
+                    }
+                    break;
+
+                case 'request_new_pin':
+                    try {
+                        $result = $pilotManager->requestNewPIN($_POST['pilot_id'] ?? '');
+                        $popupEmailMessage = $result['message'];
+                        $message = "✅ " . $result['message'];
+                    } catch (Exception $e) {
+                        $message = "❌ Erro: " . $e->getMessage();
+                        $messageType = 'error';
                 }
                 break;
 
@@ -965,8 +1186,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 break;
 
+            case 'admin_manage_pilot':
+                if (isAdminAuthorized()) {
+                    try {
+                        $operation = $_POST['pilot_operation'] ?? '';
+                        if ($operation !== 'activate' && $operation !== 'deactivate') throw new Exception('Ação de gestão inválida.');
+                        $result = $pilotManager->setPilotActive($_POST['pilot_id'] ?? '', $operation === 'activate');
+                        redirectWithMessage('✅ ' . $result['message']);
+                    } catch (Exception $e) {
+                        $message = '❌ Erro na gestão do piloto: ' . $e->getMessage();
+                        $messageType = 'error';
+                    }
+                } else {
+                    $message = '❌ Sessão administrativa inválida ou expirada.';
+                    $messageType = 'error';
+                }
+                break;
+
             case 'admin_invalidate':
-                if ($_POST['admin_password'] === 'Tgc@2026') {
+                if (isAdminAuthorized()) {
                     try {
                         $submissionManager->invalidateSubmission($_POST['submission_id'], $_POST['reason']);
                         redirectWithMessage("✅ Submissão invalidada com sucesso!");
@@ -975,19 +1213,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $messageType = 'error';
                     }
                 } else {
-                    $message = "❌ Senha administrativa incorreta!";
+                    $message = '❌ Sessão administrativa inválida ou expirada.';
                     $messageType = 'error';
                 }
                 break;
 
             case 'admin_draw_tracks':
-                if ($_POST['admin_password'] === 'Tgc@2026') {
+                if (isAdminAuthorized()) {
                     try {
                         $roundNumber = intval($_POST['round_number']);
                         if ($roundNumber < 1) throw new Exception("O número da rodada deve ser no mínimo 1!");
 
                         $year = intval($_POST['year']);
                         $forceRedraw = isset($_POST['force_redraw']) && $_POST['force_redraw'] === 'yes';
+
+                        if ($forceRedraw) {
+                            $pending = $_SESSION['pending_draw'] ?? null;
+                            if (!$pending || (int) $pending['round'] !== $roundNumber || (int) $pending['year'] !== $year) {
+                                throw new Exception('A confirmação do novo sorteio expirou ou não corresponde à rodada selecionada.');
+                            }
+                        }
 
                         if (!$forceRedraw && $admin->roundExists($roundNumber, $year)) {
                             $_SESSION['pending_draw'] = ['round' => $roundNumber, 'year' => $year];
@@ -1011,13 +1256,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $messageType = 'error';
                     }
                 } else {
-                    $message = "❌ Senha administrativa incorreta!";
+                    $message = '❌ Sessão administrativa inválida ou expirada.';
                     $messageType = 'error';
                 }
                 break;
 
             case 'admin_finalize_round':
-                if ($_POST['admin_password'] === 'Tgc@2026') {
+                if (isAdminAuthorized()) {
                     try {
                         $roundNumber = intval($_POST['round_number']);
                         if ($roundNumber < 1) throw new Exception("O número da rodada deve ser no mínimo 1!");
@@ -1034,13 +1279,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $messageType = 'error';
                     }
                 } else {
-                    $message = "❌ Senha administrativa incorreta!";
+                    $message = '❌ Sessão administrativa inválida ou expirada.';
                     $messageType = 'error';
                 }
                 break;
 
             case 'admin_set_deadline':
-                if ($_POST['admin_password'] === 'Tgc@2026') {
+                if (isAdminAuthorized()) {
                     try {
                         $roundNumber = intval($_POST['round_number']);
                         if ($roundNumber < 1) throw new Exception("O número da rodada deve ser no mínimo 1!");
@@ -1053,7 +1298,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $messageType = 'error';
                     }
                 } else {
-                    $message = "❌ Senha administrativa incorreta!";
+                    $message = '❌ Sessão administrativa inválida ou expirada.';
                     $messageType = 'error';
                 }
                 break;
@@ -1077,6 +1322,11 @@ $completeTrackList = $admin->getTrackList();
 $hallOfFameData = $submissionManager->getHallOfFameData();
 $seasonRanking = $seasonRankingManager->getSeasonRanking();
 $pendingDraw = $_SESSION['pending_draw'] ?? null;
+$adminAuthenticated = adminSessionActive();
+$adminCsrf = adminCsrfToken();
+$resetPilots = getResetEligiblePilots($allPilots);
+$pilotsToActivate = array_values(array_filter($allPilots, function ($pilot) { return ($pilot['activePilot'] ?? false) === false; }));
+$pilotsToDeactivate = array_values(array_filter($allPilots, function ($pilot) { return ($pilot['activePilot'] ?? false) === true; }));
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -1129,21 +1379,6 @@ $pendingDraw = $_SESSION['pending_draw'] ?? null;
 </head>
 <body class="bg-gray-900 text-white min-h-screen font-sans">
 
-<!-- Popup PIN (Novo cadastro) -->
-<div id="pinPopup" class="popup" <?= $popupPIN ? 'style="display:block;"' : '' ?>>
-    <div class="popup-content">
-        <span class="close-popup" onclick="closePopup('pinPopup')">&times;</span>
-        <h2 class="text-2xl font-bold mb-4">🔑 O seu PIN foi gerado!</h2>
-        <div class="bg-gray-800 p-6 rounded-lg mb-4 border border-gray-700">
-            <p class="text-5xl font-mono font-bold text-green-400 tracking-widest" id="pinDisplay"><?= $popupPIN ?? 'XXXX' ?></p>
-        </div>
-        <p class="text-yellow-400 mb-4 font-bold">⚠️ ANOTE AGORA! Você precisará dele para jogar.</p>
-        <button onclick="closePopup('pinPopup')" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-8 rounded-full shadow-lg transition transform hover:scale-105">
-            Entendi, já anotei!
-        </button>
-    </div>
-</div>
-
 <!-- Popup Email enviado (Recuperação) -->
 <div id="emailPopup" class="popup" <?= $popupEmailMessage ? 'style="display:block;"' : '' ?>>
     <div class="popup-content">
@@ -1151,7 +1386,7 @@ $pendingDraw = $_SESSION['pending_draw'] ?? null;
         <h2 class="text-2xl font-bold mb-4">📧 E-mail Enviado!</h2>
         <div class="bg-gray-800 p-6 rounded-lg mb-4 border border-gray-700">
             <i class="fa-solid fa-paper-plane text-5xl text-blue-400 mb-4"></i>
-            <p class="text-lg"><?= $popupEmailMessage ?></p>
+            <p class="text-lg"><?= htmlspecialchars($popupEmailMessage, ENT_QUOTES, 'UTF-8') ?></p>
         </div>
         <p class="text-gray-400 mb-4 text-sm">Verifique a sua caixa de entrada e spam.</p>
         <button onclick="closePopup('emailPopup')" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-full shadow-lg">
@@ -1227,7 +1462,7 @@ $pendingDraw = $_SESSION['pending_draw'] ?? null;
         else echo 'bg-green-900/50 border-green-500 text-green-200';
         ?> border px-6 py-4 rounded-lg shadow-lg flex items-center gap-3">
             <i class="fa-solid fa-circle-info text-xl"></i>
-            <div><?= $message ?></div>
+            <div><?= htmlspecialchars($message, ENT_QUOTES, 'UTF-8') ?></div>
         </div>
     </div>
 <?php endif; ?>
@@ -1256,7 +1491,7 @@ $pendingDraw = $_SESSION['pending_draw'] ?? null;
             <i class="fa-solid fa-hand-fist"></i> Submeter Versus
         </button>
         <button onclick="switchTab('cadastro-piloto')" class="tab-button px-5 py-3 rounded-t-lg font-bold transition hover:bg-gray-800 text-sm md:text-base flex items-center gap-2 text-blue-300">
-            <i class="fa-solid fa-user-plus"></i> Recuperar PIN do Piloto
+            <i class="fa-solid fa-user-plus"></i> Cadastro e reset PIN
         </button>
         <button onclick="switchTab('admin')" class="tab-button px-5 py-3 rounded-t-lg font-bold transition hover:bg-gray-800 text-sm md:text-base flex items-center gap-2 text-gray-400 ml-auto">
             <i class="fa-solid fa-lock"></i> Admin
@@ -1877,63 +2112,61 @@ $pendingDraw = $_SESSION['pending_draw'] ?? null;
         </div>
     </div> <!-- /secureFormsWrapper -->
 
-    <!-- Tab: Cadastro de Piloto -->
+    <!-- Tab: Cadastro e reset PIN -->
     <div id="cadastro-piloto" class="tab-content">
         <div class="bg-gray-800 rounded-xl p-6 mb-8 border border-gray-700 shadow-xl">
             <h2 class="text-3xl font-black italic mb-4 flex items-center gap-2 text-blue-400">
-                <i class="fa-solid fa-user-plus"></i> Recuperar PIN do Piloto
+                <i class="fa-solid fa-user-plus"></i> Cadastro e reset PIN
             </h2>
+            <p class="text-gray-300 mb-4">Selecione um piloto ativo para enviar um novo PIN ao e-mail cadastrado. Os e-mails são exibidos parcialmente mascarados.</p>
 
-            <form method="POST" class="space-y-4">
-                <div class="flex flex-wrap gap-3">
-                    <button type="button" onclick="showRequestPinForm()" class="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-6 rounded transition border border-gray-600">
-                        Esqueceu seu PIN - Clique Aqui!
-                    </button>
-                </div>
-            </form>
-
-            <form id="requestPinForm" method="POST" class="mt-4 pt-4 border-t border-gray-700 hidden">
+            <form id="requestPinForm" method="POST" class="mt-4 pt-4 border-t border-gray-700">
                 <input type="hidden" name="action" value="request_new_pin">
                 <div class="flex flex-col gap-3">
-                    <p class="text-yellow-400 text-sm mb-2"><i class="fa-solid fa-triangle-exclamation"></i> Selecione seu nome e informe o e-mail em que deseja receber o novo PIN.</p>
-                    <?php usort($allPilots, function ($a, $b) { return strcasecmp($a['name'], $b['name']); }); ?>
-                    <select id="requestPinPilot" name="phoneNumberID" required class="w-full bg-gray-900 border border-gray-600 rounded px-4 py-2">
+                    <p class="text-yellow-400 text-sm mb-2"><i class="fa-solid fa-triangle-exclamation"></i> O PIN será enviado exclusivamente ao endereço salvo no cadastro.</p>
+                    <select id="requestPinPilot" name="pilot_id" required class="w-full bg-gray-900 border border-gray-600 rounded px-4 py-2">
                         <option value="">Selecione seu nome...</option>
-                        <?php foreach ($allPilots as $pilot): ?>
-                            <option value="<?= htmlspecialchars((string) $pilot['phoneNumberID'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($pilot['name'], ENT_QUOTES, 'UTF-8') ?> - <?= htmlspecialchars($pilot['nicknameTGC'], ENT_QUOTES, 'UTF-8') ?></option>
+                        <?php foreach ($resetPilots as $pilot): ?>
+                            <option value="<?= (int) $pilot['id'] ?>"><?= htmlspecialchars((string) $pilot['name'], ENT_QUOTES, 'UTF-8') ?> - <?= htmlspecialchars((string) $pilot['nicknameTGC'], ENT_QUOTES, 'UTF-8') ?> (<?= htmlspecialchars(maskEmailForDisplay(trim((string) $pilot['email'])), ENT_QUOTES, 'UTF-8') ?>)</option>
                         <?php endforeach; ?>
                     </select>
-                    <div id="requestPinEmailContainer" class="hidden">
-                        <label for="requestPinEmail" class="block text-sm mb-1">E-mail para receber o PIN</label>
-                        <input id="requestPinEmail" name="email" type="email" required disabled autocomplete="email" placeholder="voce@exemplo.com" class="w-full bg-gray-900 border border-gray-600 rounded px-4 py-2">
-                    </div>
                     <div class="flex gap-3">
-                        <button id="requestPinSubmit" type="submit" disabled class="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-6 rounded transition disabled:opacity-50 disabled:cursor-not-allowed">Enviar novo PIN por e-mail</button>
+                        <button id="requestPinSubmit" type="submit" class="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-6 rounded transition disabled:opacity-50 disabled:cursor-not-allowed">Enviar novo PIN para o e-mail cadastrado</button>
                         <button type="button" onclick="hideRequestPinForm()" class="text-gray-400 hover:text-white px-4">Cancelar</button>
                     </div>
                 </div>
             </form>
+            <div class="mt-6 border-t border-gray-700 pt-5">
+                <p class="text-gray-300 mb-3">Não encontrou seu nome e ainda não é um piloto cadastrado? Solicite um novo cadastro para análise dos administradores.</p>
+                <button type="button" onclick="openRegistrationPopup()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded transition">Não encontrei meu nome — novo cadastro</button>
+            </div>
+        </div>
+    </div>
 
-            <script>
-                (() => {
-                    const pilotSelect = document.getElementById('requestPinPilot');
-                    const emailContainer = document.getElementById('requestPinEmailContainer');
-                    const emailInput = document.getElementById('requestPinEmail');
-                    const submitButton = document.getElementById('requestPinSubmit');
-
-                    function updateRequestPinForm() {
-                        const hasPilot = pilotSelect.value !== '';
-                        emailContainer.classList.toggle('hidden', !hasPilot);
-                        emailInput.disabled = !hasPilot;
-                        if (!hasPilot) emailInput.value = '';
-                        submitButton.disabled = !hasPilot || emailInput.value.trim() === '' || !emailInput.checkValidity();
-                    }
-
-                    pilotSelect.addEventListener('change', updateRequestPinForm);
-                    emailInput.addEventListener('input', updateRequestPinForm);
-                    updateRequestPinForm();
-                })();
-            </script>
+    <div id="registrationPopup" class="popup" role="dialog" aria-modal="true" aria-labelledby="registrationTitle">
+        <div class="popup-content text-left">
+            <button type="button" class="close-popup" aria-label="Fechar" onclick="closePopup('registrationPopup')">&times;</button>
+            <h2 id="registrationTitle" class="text-2xl font-bold mb-3 text-white">Solicitar cadastro de piloto</h2>
+            <p class="text-gray-300 mb-4">O cadastro ficará pendente até ser analisado por um administrador. Nenhum PIN será gerado nesta etapa.</p>
+            <form method="POST" class="space-y-3">
+                <input type="hidden" name="action" value="request_pilot_registration">
+                <label class="block text-sm">Nome real
+                    <input name="name" type="text" required maxlength="120" autocomplete="name" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-4 py-2">
+                </label>
+                <label class="block text-sm">Nickname TGC
+                    <input name="nicknameTGC" type="text" required maxlength="60" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-4 py-2">
+                </label>
+                <label class="block text-sm">Telefone com DDI
+                    <input name="phoneNumberID" type="tel" required inputmode="numeric" pattern="[0-9]{8,15}" placeholder="5511999999999" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-4 py-2">
+                </label>
+                <label class="block text-sm">E-mail
+                    <input name="email" type="email" required maxlength="254" autocomplete="email" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-4 py-2">
+                </label>
+                <div class="flex gap-3 pt-2">
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-5 rounded">Enviar solicitação</button>
+                    <button type="button" onclick="closePopup('registrationPopup')" class="text-gray-300 px-4">Cancelar</button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -1942,6 +2175,21 @@ $pendingDraw = $_SESSION['pending_draw'] ?? null;
         <div class="bg-gray-800 rounded-xl p-6 border border-gray-700">
             <h2 class="text-3xl font-black mb-6 text-gray-400"><i class="fa-solid fa-lock"></i> Painel Administrativo</h2>
 
+            <?php if (!$adminAuthenticated): ?>
+                <form method="POST" class="max-w-md space-y-4">
+                    <input type="hidden" name="action" value="admin_login">
+                    <input type="hidden" name="admin_csrf" value="<?= htmlspecialchars($adminCsrf, ENT_QUOTES, 'UTF-8') ?>">
+                    <label class="block text-gray-300">Senha administrativa
+                        <input type="password" name="admin_password" required autocomplete="current-password" class="mt-1 w-full bg-gray-600 rounded px-3 py-2">
+                    </label>
+                    <button class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded">Entrar</button>
+                </form>
+            <?php else: ?>
+            <form method="POST" class="mb-6 text-right">
+                <input type="hidden" name="action" value="admin_logout">
+                <input type="hidden" name="admin_csrf" value="<?= htmlspecialchars($adminCsrf, ENT_QUOTES, 'UTF-8') ?>">
+                <button class="text-sm text-gray-300 hover:text-white underline">Encerrar sessão administrativa</button>
+            </form>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <!-- Sorteio -->
                 <div class="bg-gray-700 p-6 rounded-lg border border-gray-600">
@@ -1953,7 +2201,7 @@ $pendingDraw = $_SESSION['pending_draw'] ?? null;
                             <p class="text-sm">Isso APAGARÁ todos os dados da rodada <?= $pendingDraw['round'] ?>!</p>
                             <form method="POST" class="mt-2">
                                 <input type="hidden" name="action" value="admin_draw_tracks">
-                                <input type="hidden" name="admin_password" value="Tgc@2026">
+                                <input type="hidden" name="admin_csrf" value="<?= htmlspecialchars($adminCsrf, ENT_QUOTES, 'UTF-8') ?>">
                                 <input type="hidden" name="year" value="<?= $pendingDraw['year'] ?>">
                                 <input type="hidden" name="round_number" value="<?= $pendingDraw['round'] ?>">
                                 <input type="hidden" name="force_redraw" value="yes">
@@ -1964,7 +2212,7 @@ $pendingDraw = $_SESSION['pending_draw'] ?? null;
 
                     <form method="POST" class="space-y-4">
                         <input type="hidden" name="action" value="admin_draw_tracks">
-                        <div><input type="password" name="admin_password" required placeholder="Senha Admin" class="w-full bg-gray-600 rounded px-3 py-2"></div>
+                        <input type="hidden" name="admin_csrf" value="<?= htmlspecialchars($adminCsrf, ENT_QUOTES, 'UTF-8') ?>">
                         <div class="flex gap-2">
                             <select name="year" class="bg-gray-600 rounded px-3 py-2 flex-1"><option value="2026">2026</option><option value="2025">2025</option></select>
                             <input type="number" name="round_number" placeholder="Rodada #" min="1" class="bg-gray-600 rounded px-3 py-2 w-24">
@@ -1981,7 +2229,7 @@ $pendingDraw = $_SESSION['pending_draw'] ?? null;
 
                     <form method="POST" class="space-y-4 relative z-10" onsubmit="return confirm('ATENÇÃO: Isso encerrará a rodada permanentemente e calculará os pontos. Continuar?');">
                         <input type="hidden" name="action" value="admin_finalize_round">
-                        <div><input type="password" name="admin_password" required placeholder="Senha Admin" class="w-full bg-gray-600 rounded px-3 py-2"></div>
+                        <input type="hidden" name="admin_csrf" value="<?= htmlspecialchars($adminCsrf, ENT_QUOTES, 'UTF-8') ?>">
                         <div class="flex gap-2">
                             <select name="year" class="bg-gray-600 rounded px-3 py-2 flex-1"><option value="2026">2026</option></select>
                             <input type="number" name="round_number" placeholder="Rodada #" min="1" class="bg-gray-600 rounded px-3 py-2 w-24">
@@ -1997,7 +2245,7 @@ $pendingDraw = $_SESSION['pending_draw'] ?? null;
                     <h3 class="text-xl font-bold mb-4 text-white">⏰ Definir Prazo - Pole Position</h3>
                     <form method="POST" class="space-y-4">
                         <input type="hidden" name="action" value="admin_set_deadline">
-                        <input type="password" name="admin_password" required placeholder="Senha" class="w-full bg-gray-600 rounded px-3 py-2">
+                        <input type="hidden" name="admin_csrf" value="<?= htmlspecialchars($adminCsrf, ENT_QUOTES, 'UTF-8') ?>">
                         <div class="flex gap-2">
                             <select name="year" class="bg-gray-600 rounded px-3 py-2 w-24">
                                 <option value="2026">2026</option>
@@ -2015,13 +2263,75 @@ $pendingDraw = $_SESSION['pending_draw'] ?? null;
                     <h3 class="text-xl font-bold mb-4 text-white">❌ Moderação - Invalidar Tempos</h3>
                     <form method="POST" class="space-y-4">
                         <input type="hidden" name="action" value="admin_invalidate">
-                        <input type="password" name="admin_password" required placeholder="Senha" class="w-full bg-gray-600 rounded px-3 py-2">
+                        <input type="hidden" name="admin_csrf" value="<?= htmlspecialchars($adminCsrf, ENT_QUOTES, 'UTF-8') ?>">
                         <input type="text" name="submission_id" placeholder="ID da Submissão" required class="w-full bg-gray-600 rounded px-3 py-2">
                         <input type="text" name="reason" placeholder="Motivo" required class="w-full bg-gray-600 rounded px-3 py-2">
                         <button class="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded">Invalidar</button>
                     </form>
                 </div>
+
+                <!-- Gestão de pilotos -->
+                <div class="md:col-span-2 bg-gray-700 p-6 rounded-lg border border-gray-600">
+                    <h3 class="text-xl font-bold mb-5 text-white">Gestão de pilotos</h3>
+                    <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                        <section>
+                            <h4 class="font-bold text-green-300 mb-3">Pilotos para ativar</h4>
+                            <?php if (!$pilotsToActivate): ?>
+                                <p class="text-sm text-gray-300">Não há pilotos pendentes.</p>
+                            <?php else: ?>
+                                <div class="space-y-3">
+                                    <?php foreach ($pilotsToActivate as $pilot): ?>
+                                        <div class="bg-gray-800 p-3 rounded flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                                            <div class="text-sm text-gray-200">
+                                                <strong>ID <?= (int) ($pilot['id'] ?? 0) ?></strong> —
+                                                <?= htmlspecialchars((string) ($pilot['name'] ?? ''), ENT_QUOTES, 'UTF-8') ?> /
+                                                <?= htmlspecialchars((string) ($pilot['nicknameTGC'] ?? ''), ENT_QUOTES, 'UTF-8') ?><br>
+                                                Tel: <?= htmlspecialchars((string) ($pilot['phoneNumberID'] ?? ''), ENT_QUOTES, 'UTF-8') ?> ·
+                                                E-mail: <?= htmlspecialchars((string) ($pilot['email'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                                            </div>
+                                            <form method="POST" class="flex gap-2 items-center">
+                                                <input type="hidden" name="action" value="admin_manage_pilot">
+                                                <input type="hidden" name="admin_csrf" value="<?= htmlspecialchars($adminCsrf, ENT_QUOTES, 'UTF-8') ?>">
+                                                <input type="hidden" name="pilot_id" value="<?= (int) ($pilot['id'] ?? 0) ?>">
+                                                <input type="hidden" name="pilot_operation" value="activate">
+                                                <button class="bg-green-700 hover:bg-green-600 text-white font-bold px-4 py-2 rounded">Ativar</button>
+                                            </form>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php endif; ?>
+                        </section>
+                        <section>
+                            <h4 class="font-bold text-yellow-300 mb-3">Pilotos para desativar</h4>
+                            <?php if (!$pilotsToDeactivate): ?>
+                                <p class="text-sm text-gray-300">Não há pilotos ativos.</p>
+                            <?php else: ?>
+                                <div class="space-y-3">
+                                    <?php foreach ($pilotsToDeactivate as $pilot): ?>
+                                        <div class="bg-gray-800 p-3 rounded flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                                            <div class="text-sm text-gray-200">
+                                                <strong>ID <?= (int) ($pilot['id'] ?? 0) ?></strong> —
+                                                <?= htmlspecialchars((string) ($pilot['name'] ?? ''), ENT_QUOTES, 'UTF-8') ?> /
+                                                <?= htmlspecialchars((string) ($pilot['nicknameTGC'] ?? ''), ENT_QUOTES, 'UTF-8') ?><br>
+                                                Tel: <?= htmlspecialchars((string) ($pilot['phoneNumberID'] ?? ''), ENT_QUOTES, 'UTF-8') ?> ·
+                                                E-mail: <?= htmlspecialchars((string) ($pilot['email'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                                            </div>
+                                            <form method="POST" class="flex gap-2 items-center">
+                                                <input type="hidden" name="action" value="admin_manage_pilot">
+                                                <input type="hidden" name="admin_csrf" value="<?= htmlspecialchars($adminCsrf, ENT_QUOTES, 'UTF-8') ?>">
+                                                <input type="hidden" name="pilot_id" value="<?= (int) ($pilot['id'] ?? 0) ?>">
+                                                <input type="hidden" name="pilot_operation" value="deactivate">
+                                                <button class="bg-yellow-700 hover:bg-yellow-600 text-white font-bold px-4 py-2 rounded">Desativar</button>
+                                            </form>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php endif; ?>
+                        </section>
+                    </div>
+                </div>
             </div>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -2174,8 +2484,7 @@ $pendingDraw = $_SESSION['pending_draw'] ?? null;
     }
 
     function closePopup(id) { document.getElementById(id).style.display = 'none'; }
-    function showRequestPinForm() { document.getElementById('requestPinForm').classList.remove('hidden'); }
-    function hideRequestPinForm() { document.getElementById('requestPinForm').classList.add('hidden'); }
+    function openRegistrationPopup() { document.getElementById('registrationPopup').style.display = 'block'; }
 
     <?php if ($roundDeadline): ?>
     function updateCountdown() {
