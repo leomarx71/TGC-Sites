@@ -13,13 +13,15 @@ session_start();
 // ============================================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['api_action']) && $_POST['api_action'] === 'validate_pin') {
     header('Content-Type: application/json');
+
     try {
         $pilotManager = new PilotManager();
-        $valid = $pilotManager->validatePIN($_POST['phoneNumberID'], $_POST['pin']);
+        $valid = $pilotManager->validatePIN($_POST['phoneNumberID'] ?? '', $_POST['pin'] ?? '');
         echo json_encode(['success' => $valid]);
     } catch (Exception $e) {
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
     }
+
     exit;
 }
 
@@ -76,22 +78,38 @@ class PilotManager {
     }
 
     public function validatePIN($phoneNumberID, $pin) {
+        $phoneNumberID = filter_var($phoneNumberID, FILTER_VALIDATE_INT);
+        $pin = trim((string) $pin);
+
+        if ($phoneNumberID === false || !preg_match('/^[0-9]{6}$/', $pin)) return false;
+
         $pilots = $this->loadPilots();
+
         foreach ($pilots as $pilot) {
-            if ($pilot['phoneNumberID'] === $phoneNumberID) {
-                $storedPIN = base64_decode($pilot['pinB64']);
-                return $storedPIN === $pin;
-            }
+            if (!isset($pilot['phoneNumberID']) || (int) $pilot['phoneNumberID'] !== $phoneNumberID) continue;
+
+            $storedPIN = base64_decode((string) ($pilot['pinB64'] ?? ''), true);
+
+            if ($storedPIN === false || !preg_match('/^[0-9]{6}$/', $storedPIN)) return false;
+
+            return hash_equals($storedPIN, $pin);
         }
+
         return false;
     }
 
     public function getPilotByPhone($phoneNumberID) {
+        $phoneNumberID = filter_var($phoneNumberID, FILTER_VALIDATE_INT);
+
+        if ($phoneNumberID === false) throw new Exception('Phone ID inválido.');
+
         $pilots = $this->loadPilots();
+
         foreach ($pilots as $pilot) {
-            if ($pilot['phoneNumberID'] === $phoneNumberID) return $pilot;
+            if (isset($pilot['phoneNumberID']) && (int) $pilot['phoneNumberID'] === $phoneNumberID) return $pilot;
         }
-        throw new Exception("Piloto não encontrado pelo Phone ID.");
+
+        throw new Exception('Piloto não encontrado pelo Phone ID.');
     }
 
     public function registerPilot($data) {
@@ -127,21 +145,28 @@ class PilotManager {
         return array_merge($pilot, ['pin_clear' => $pinData['pin']]);
     }
 
-    public function requestNewPIN($phoneNumberID) {
-        $pilots = $this->loadPilots();
-
-        // O valor enviado pelo <select> chega como texto.
-        // Valida e converte para inteiro antes da comparação.
+    public function requestNewPIN($phoneNumberID, $email) {
         $phoneNumberID = filter_var($phoneNumberID, FILTER_VALIDATE_INT);
+        $email = trim((string) $email);
 
         if ($phoneNumberID === false) {
             return ['error' => 'ID do piloto inválido.'];
         }
 
+        if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            return ['error' => 'Informe um e-mail válido.'];
+        }
+
+        $pilots = $this->loadPilots();
+
+        if (!is_array($pilots)) {
+            throw new Exception('Erro interno: não foi possível carregar os pilotos.');
+        }
+
         $pilotIndex = null;
 
-        foreach ($pilots as $index => $p) {
-            if ($p['phoneNumberID'] === $phoneNumberID) {
+        foreach ($pilots as $index => $pilot) {
+            if (isset($pilot['phoneNumberID']) && $pilot['phoneNumberID'] === $phoneNumberID) {
                 $pilotIndex = $index;
                 break;
             }
@@ -151,36 +176,29 @@ class PilotManager {
             return ['error' => 'Piloto não encontrado para o ID: ' . $phoneNumberID];
         }
 
-        $email = $pilots[$pilotIndex]['email'];
-        if (empty($email)) {
-            return ['error' => 'E-mail não cadastrado para este piloto.'];
-        }
-
-        $pinData = $this->generatePIN();
-        $pilots[$pilotIndex]['pinB64'] = $pinData['pin_b64'];
-        $pilots[$pilotIndex]['pinUpdatedAt'] = date('Y-m-d\TH:i:s\Z');
-        $this->savePilots($pilots);
-
         if (!file_exists('TGCMailer.php')) {
             throw new Exception('Erro interno: Arquivo TGCMailer.php não encontrado.');
         }
 
-        require_once 'TGCMailer.php';
-        $mailer = new TGCMailer();
-        $result = $mailer->sendRecoveryEmail(
-                $email,
-                $pilots[$pilotIndex]['name'],
-                $pinData['pin']
-        );
+        $pinData = $this->generatePIN();
 
-        if ($result['success']) {
-            return [
-                    'success' => true,
-                    'message' => 'Novo PIN enviado para: ' . $this->maskEmail($email)
-            ];
+        // Atualiza os dados do piloto no mesmo registro.
+        $pilots[$pilotIndex]['email'] = $email;
+        $pilots[$pilotIndex]['pinB64'] = $pinData['pin_b64'];
+        $pilots[$pilotIndex]['pinUpdatedAt'] = gmdate('Y-m-d\TH:i:s\Z');
+
+        $this->savePilots($pilots);
+
+        require_once 'TGCMailer.php';
+
+        $mailer = new TGCMailer();
+        $result = $mailer->sendRecoveryEmail($email, $pilots[$pilotIndex]['name'], $pinData['pin']);
+
+        if (!empty($result['success'])) {
+            return ['success' => true, 'message' => 'Novo PIN enviado para: ' . $this->maskEmail($email)];
         }
 
-        throw new Exception('Erro ao enviar e-mail: ' . $result['error']);
+        throw new Exception('Dados salvos, mas houve erro ao enviar o e-mail: ' . ($result['error'] ?? 'erro desconhecido'));
     }
 
     private function maskEmail($email) {
@@ -795,7 +813,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             case 'request_new_pin':
                 try {
-                    $result = $pilotManager->requestNewPIN($_POST['phoneNumberID']);
+                    $result = $pilotManager->requestNewPIN($_POST['phoneNumberID'],$_POST['email']);
                     if (isset($result['error'])) {
                         $message = "❌ " . $result['error'];
                         $messageType = 'error';
@@ -1238,7 +1256,7 @@ $pendingDraw = $_SESSION['pending_draw'] ?? null;
             <i class="fa-solid fa-hand-fist"></i> Submeter Versus
         </button>
         <button onclick="switchTab('cadastro-piloto')" class="tab-button px-5 py-3 rounded-t-lg font-bold transition hover:bg-gray-800 text-sm md:text-base flex items-center gap-2 text-blue-300">
-            <i class="fa-solid fa-user-plus"></i> Cadastro de Piloto
+            <i class="fa-solid fa-user-plus"></i> Recuperar PIN do Piloto
         </button>
         <button onclick="switchTab('admin')" class="tab-button px-5 py-3 rounded-t-lg font-bold transition hover:bg-gray-800 text-sm md:text-base flex items-center gap-2 text-gray-400 ml-auto">
             <i class="fa-solid fa-lock"></i> Admin
@@ -1654,7 +1672,7 @@ $pendingDraw = $_SESSION['pending_draw'] ?? null;
                     <?php endif; endforeach; ?>
                 </select>
 
-                <input type="password" id="authPinCode" maxlength="6" pattern="[0-9]{6}" placeholder="PIN (6 dígitos)"
+                <input type="password" id="authPinCode" maxlength="6" minlength="6" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code" required placeholder="PIN (6 dígitos)"
                        class="w-full bg-gray-900 border border-gray-600 rounded px-4 py-3 tracking-widest text-center text-white font-mono text-xl focus:ring-2 focus:ring-blue-500 outline-none">
 
                 <button onclick="validateGlobalPIN()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg shadow transition" id="btnValidatePin">
@@ -1863,21 +1881,11 @@ $pendingDraw = $_SESSION['pending_draw'] ?? null;
     <div id="cadastro-piloto" class="tab-content">
         <div class="bg-gray-800 rounded-xl p-6 mb-8 border border-gray-700 shadow-xl">
             <h2 class="text-3xl font-black italic mb-4 flex items-center gap-2 text-blue-400">
-                <i class="fa-solid fa-user-plus"></i> Cadastro de Piloto
+                <i class="fa-solid fa-user-plus"></i> Recuperar PIN do Piloto
             </h2>
 
             <form method="POST" class="space-y-4">
-                <input type="hidden" name="action" value="register_pilot">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input type="text" name="phoneNumberID" required placeholder="Número Telefone (Ex: 5511987654321)" class="bg-gray-900 border border-gray-600 rounded px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none">
-                    <input type="text" name="nickname" required placeholder="Nickname (Ex: Stig)" class="bg-gray-900 border border-gray-600 rounded px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none">
-                    <input type="text" name="real_name" required placeholder="Nome Real" class="bg-gray-900 border border-gray-600 rounded px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none">
-                    <input type="email" name="email" placeholder="seu@email.com (Obrigatório para recuperar PIN)" required class="bg-gray-900 border border-gray-600 rounded px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none">
-                </div>
                 <div class="flex flex-wrap gap-3">
-                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded transition shadow-lg">
-                        Cadastrar
-                    </button>
                     <button type="button" onclick="showRequestPinForm()" class="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-6 rounded transition border border-gray-600">
                         Esqueceu seu PIN - Clique Aqui!
                     </button>
@@ -1886,29 +1894,46 @@ $pendingDraw = $_SESSION['pending_draw'] ?? null;
 
             <form id="requestPinForm" method="POST" class="mt-4 pt-4 border-t border-gray-700 hidden">
                 <input type="hidden" name="action" value="request_new_pin">
-                <div class="flex flex-col gap-2">
-                    <p class="text-yellow-400 text-sm mb-2"><i class="fa-solid fa-triangle-exclamation"></i> Um novo PIN será gerado e enviado para o seu <strong>E-mail</strong> cadastrado.</p>
+                <div class="flex flex-col gap-3">
+                    <p class="text-yellow-400 text-sm mb-2"><i class="fa-solid fa-triangle-exclamation"></i> Selecione seu nome e informe o e-mail em que deseja receber o novo PIN.</p>
+                    <?php usort($allPilots, function ($a, $b) { return strcasecmp($a['name'], $b['name']); }); ?>
+                    <select id="requestPinPilot" name="phoneNumberID" required class="w-full bg-gray-900 border border-gray-600 rounded px-4 py-2">
+                        <option value="">Selecione seu nome...</option>
+                        <?php foreach ($allPilots as $pilot): ?>
+                            <option value="<?= htmlspecialchars((string) $pilot['phoneNumberID'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($pilot['name'], ENT_QUOTES, 'UTF-8') ?> - <?= htmlspecialchars($pilot['nicknameTGC'], ENT_QUOTES, 'UTF-8') ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <div id="requestPinEmailContainer" class="hidden">
+                        <label for="requestPinEmail" class="block text-sm mb-1">E-mail para receber o PIN</label>
+                        <input id="requestPinEmail" name="email" type="email" required disabled autocomplete="email" placeholder="voce@exemplo.com" class="w-full bg-gray-900 border border-gray-600 rounded px-4 py-2">
+                    </div>
                     <div class="flex gap-3">
-                        <?php
-                        usort($allPilots, function ($a, $b) {
-                            return strcasecmp($a['name'], $b['name']);
-                        });
-                        ?>
-                        <select name="phoneNumberID" required class="flex-1 bg-gray-900 border border-gray-600 rounded px-4 py-2">
-                            <option value="">Selecione seu nome... Se um e-mail já estiver cadastrado o novo PIN irá pra lá</option>
-                            <?php foreach ($allPilots as $pilot): ?>
-                                <option value="<?= htmlspecialchars($pilot['phoneNumberID']) ?>">
-                                    <?= htmlspecialchars($pilot['name']) ?> - <?= htmlspecialchars($pilot['nicknameTGC']) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                        <button type="submit" class="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-6 rounded transition">
-                            Enviar novo PIN por E-mail
-                        </button>
+                        <button id="requestPinSubmit" type="submit" disabled class="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-6 rounded transition disabled:opacity-50 disabled:cursor-not-allowed">Enviar novo PIN por e-mail</button>
                         <button type="button" onclick="hideRequestPinForm()" class="text-gray-400 hover:text-white px-4">Cancelar</button>
                     </div>
                 </div>
             </form>
+
+            <script>
+                (() => {
+                    const pilotSelect = document.getElementById('requestPinPilot');
+                    const emailContainer = document.getElementById('requestPinEmailContainer');
+                    const emailInput = document.getElementById('requestPinEmail');
+                    const submitButton = document.getElementById('requestPinSubmit');
+
+                    function updateRequestPinForm() {
+                        const hasPilot = pilotSelect.value !== '';
+                        emailContainer.classList.toggle('hidden', !hasPilot);
+                        emailInput.disabled = !hasPilot;
+                        if (!hasPilot) emailInput.value = '';
+                        submitButton.disabled = !hasPilot || emailInput.value.trim() === '' || !emailInput.checkValidity();
+                    }
+
+                    pilotSelect.addEventListener('change', updateRequestPinForm);
+                    emailInput.addEventListener('input', updateRequestPinForm);
+                    updateRequestPinForm();
+                })();
+            </script>
         </div>
     </div>
 
@@ -2046,6 +2071,7 @@ $pendingDraw = $_SESSION['pending_draw'] ?? null;
     function showPinValidationUI(targetTab) {
         document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
         document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+        document.getElementById('secureFormsWrapper').classList.add('hidden');
         document.getElementById('pinValidationUI').classList.remove('hidden');
         document.getElementById('pinValidationUI').classList.add('active');
         document.getElementById('pinValidationUI').dataset.target = targetTab;
@@ -2060,51 +2086,66 @@ $pendingDraw = $_SESSION['pending_draw'] ?? null;
     }
 
     async function validateGlobalPIN() {
-        const phone = document.getElementById('authPhoneID');
-        const pin = document.getElementById('authPinCode').value;
+        const phoneSelect = document.getElementById('authPhoneID');
+        const pinInput = document.getElementById('authPinCode');
         const btn = document.getElementById('btnValidatePin');
         const msg = document.getElementById('authErrorMsg');
 
-        if (!phone.value || !pin) {
-            msg.innerText = "Preencha o piloto e o PIN.";
+        msg.classList.add('hidden');
+
+        if (!phoneSelect.value) {
+            msg.innerText = 'Selecione seu piloto.';
             msg.classList.remove('hidden');
+            phoneSelect.focus();
             return;
         }
 
-        btn.innerText = "Validando...";
+        if (!pinInput.reportValidity()) {
+            msg.innerText = 'Informe um PIN de 6 dígitos.';
+            msg.classList.remove('hidden');
+            pinInput.focus();
+            return;
+        }
+
         btn.disabled = true;
+        btn.innerText = 'Validando...';
 
         try {
-            const formData = new FormData();
-            formData.append('api_action', 'validate_pin');
-            formData.append('phoneNumberID', phone.value);
-            formData.append('pin', pin);
+            const response = await fetch(window.location.href, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    api_action: 'validate_pin',
+                    phoneNumberID: phoneSelect.value,
+                    pin: pinInput.value
+                })
+            });
 
-            const res = await fetch('', { method: 'POST', body: formData });
-            const data = await res.json();
+            const result = await response.json();
 
-            if (data.success) {
-                const pilotName = phone.options[phone.selectedIndex].text;
-                localStorage.setItem('tgc_pin_auth', JSON.stringify({
-                    phoneId: phone.value,
-                    pilotName: pilotName,
-                    timestamp: Date.now()
-                }));
-                msg.classList.add('hidden');
-
-                const target = document.getElementById('pinValidationUI').dataset.target;
-                hidePinValidationUI();
-                switchTab(target);
-            } else {
-                msg.innerText = data.error || "PIN Inválido.";
+            if (!result.success) {
+                msg.innerText = result.error || 'PIN inválido.';
                 msg.classList.remove('hidden');
+                return;
             }
-        } catch (e) {
-            msg.innerText = "Erro na comunicação.";
+
+            const pilotName = phoneSelect.options[phoneSelect.selectedIndex].text;
+            localStorage.setItem('tgc_pin_auth', JSON.stringify({
+                phoneId: phoneSelect.value,
+                pilotName: pilotName,
+                timestamp: Date.now()
+            }));
+
+            const targetTab = document.getElementById('pinValidationUI').dataset.target;
+            hidePinValidationUI();
+            document.getElementById('secureFormsWrapper').classList.remove('hidden');
+            switchTab(targetTab);
+        } catch (error) {
+            msg.innerText = 'Erro ao validar o PIN. Tente novamente.';
             msg.classList.remove('hidden');
         } finally {
-            btn.innerText = "Validar Acesso";
             btn.disabled = false;
+            btn.innerText = 'Validar Acesso';
         }
     }
 
