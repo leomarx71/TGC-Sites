@@ -35,17 +35,18 @@ function projectEnv() {
 }
 
 function projectEnvValue($key) {
+    $environmentValue = getenv($key);
+    if ($environmentValue !== false && $environmentValue !== '') return $environmentValue;
     $config = projectEnv();
     if (array_key_exists($key, $config)) return $config[$key] !== '' ? $config[$key] : null;
-    $value = getenv($key);
-    return $value === false || $value === '' ? null : $value;
+    return null;
 }
 
 function verifyAdminPassword($password) {
     $hash = projectEnvValue('TGC_ADMIN_PASSWORD_HASH');
     if (!is_string($hash) || $hash === '' || !is_string($password)) return false;
     $info = password_get_info($hash);
-    $defaultInfo = password_get_info(password_hash(random_bytes(32), PASSWORD_DEFAULT));
+    $defaultInfo = password_get_info(password_hash(bin2hex(random_bytes(32)), PASSWORD_DEFAULT));
     return !empty($info['algo']) && $info['algoName'] === $defaultInfo['algoName'] && password_verify($password, $hash);
 }
 
@@ -315,6 +316,75 @@ class PilotManager {
         }
 
         return ['success' => true, 'message' => 'Novo PIN enviado para: ' . maskEmailForDisplay($email)];
+    }
+
+    public function editPendingPilot($pilotId, $data, $activate = false) {
+        $pilotId = filter_var($pilotId, FILTER_VALIDATE_INT);
+        if ($pilotId === false || $pilotId < 1) throw new Exception('Identificador de piloto inválido.');
+
+        $name = trim((string) ($data['name'] ?? ''));
+        $nickname = trim((string) ($data['nicknameTGC'] ?? ''));
+        $phoneNumberID = trim((string) ($data['phoneNumberID'] ?? ''));
+        $email = trim((string) ($data['email'] ?? ''));
+        if ($name === '' || strlen($name) > 120 || $nickname === '' || strlen($nickname) > 60
+            || strlen($email) > 254 || !preg_match('/^[0-9]{8,15}$/', $phoneNumberID)
+            || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            throw new Exception('Preencha nome, nickname, telefone com DDI e e-mail válidos.');
+        }
+
+        $storedPhone = (string) (int) $phoneNumberID === $phoneNumberID ? (int) $phoneNumberID : $phoneNumberID;
+        $updated = $this->withLockedPilots(function (&$pilots) use ($pilotId, $name, $nickname, $phoneNumberID, $storedPhone, $email, $activate) {
+            foreach ($pilots as $existing) {
+                if ((int) ($existing['id'] ?? 0) === $pilotId) continue;
+                if ($this->normalizePhone($existing['phoneNumberID'] ?? '') === $this->normalizePhone($phoneNumberID)) {
+                    throw new Exception('Este telefone já pertence a outro piloto.');
+                }
+                if (strcasecmp(trim((string) ($existing['nicknameTGC'] ?? '')), $nickname) === 0) {
+                    throw new Exception('Este nickname já pertence a outro piloto.');
+                }
+                if (strcasecmp(trim((string) ($existing['email'] ?? '')), $email) === 0) {
+                    throw new Exception('Este e-mail já pertence a outro piloto.');
+                }
+            }
+
+            foreach ($pilots as &$entry) {
+                if ((int) ($entry['id'] ?? 0) !== $pilotId) continue;
+                if (($entry['activePilot'] ?? false) === true) throw new Exception('Este piloto já está ativo. Atualize a página.');
+
+                $entry['name'] = $name;
+                $entry['nicknameTGC'] = $nickname;
+                $entry['phoneNumberID'] = $storedPhone;
+                $entry['email'] = $email;
+                if (!$activate) return ['pilot' => $entry, 'pin' => null, 'previous' => null];
+
+                $pinData = $this->generatePIN();
+                $previous = ['pinB64' => $entry['pinB64'] ?? null, 'pinUpdatedAt' => $entry['pinUpdatedAt'] ?? null];
+                $entry['pinB64'] = $pinData['pin_b64'];
+                $entry['pinUpdatedAt'] = gmdate('Y-m-d\TH:i:s\Z');
+                $entry['activePilot'] = true;
+                return ['pilot' => $entry, 'pin' => $pinData, 'previous' => $previous];
+            }
+            throw new Exception('Piloto pendente não encontrado.');
+        }, true);
+
+        if (!$activate) return ['success' => true, 'message' => 'Dados do piloto atualizados; o cadastro continua pendente.'];
+
+        try {
+            $sent = $this->mailer()->sendRecoveryEmail($email, $name, $updated['pin']['pin']);
+        } catch (Exception $error) {
+            $sent = ['success' => false];
+        }
+        if (empty($sent['success'])) {
+            try {
+                $restored = $this->restoreActivation($pilotId, $updated['pin']['pin_b64'], $updated['previous']);
+            } catch (Exception $error) {
+                throw new Exception('Falha ao enviar o PIN e ao reverter a ativação. Os dados editados foram salvos e o piloto pode ter ficado ativo; confira a lista antes de tentar novamente.');
+            }
+            if ($restored) throw new Exception('Os dados editados foram salvos, mas o envio do PIN falhou. O piloto continua pendente; corrija o e-mail ou SMTP antes de tentar ativar novamente.');
+            throw new Exception('Os dados foram editados, mas o envio do PIN falhou e não foi possível reverter a ativação. Confira o estado do piloto antes de tentar novamente.');
+        }
+
+        return ['success' => true, 'message' => 'Dados atualizados; piloto ativado e PIN enviado para ' . maskEmailForDisplay($email) . '.'];
     }
 
     public function setPilotActive($pilotId, $active) {
@@ -1190,8 +1260,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (isAdminAuthorized()) {
                     try {
                         $operation = $_POST['pilot_operation'] ?? '';
-                        if ($operation !== 'activate' && $operation !== 'deactivate') throw new Exception('Ação de gestão inválida.');
-                        $result = $pilotManager->setPilotActive($_POST['pilot_id'] ?? '', $operation === 'activate');
+                        if ($operation === 'edit_pending' || $operation === 'edit_and_activate') {
+                            $result = $pilotManager->editPendingPilot($_POST['pilot_id'] ?? '', $_POST, $operation === 'edit_and_activate');
+                        } elseif ($operation === 'deactivate') {
+                            $result = $pilotManager->setPilotActive($_POST['pilot_id'] ?? '', false);
+                        } else {
+                            throw new Exception('Ação de gestão inválida.');
+                        }
                         redirectWithMessage('✅ ' . $result['message']);
                     } catch (Exception $e) {
                         $message = '❌ Erro na gestão do piloto: ' . $e->getMessage();
@@ -2289,13 +2364,14 @@ $pilotsToDeactivate = array_values(array_filter($allPilots, function ($pilot) { 
                                                 Tel: <?= htmlspecialchars((string) ($pilot['phoneNumberID'] ?? ''), ENT_QUOTES, 'UTF-8') ?> ·
                                                 E-mail: <?= htmlspecialchars((string) ($pilot['email'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
                                             </div>
-                                            <form method="POST" class="flex gap-2 items-center">
-                                                <input type="hidden" name="action" value="admin_manage_pilot">
-                                                <input type="hidden" name="admin_csrf" value="<?= htmlspecialchars($adminCsrf, ENT_QUOTES, 'UTF-8') ?>">
-                                                <input type="hidden" name="pilot_id" value="<?= (int) ($pilot['id'] ?? 0) ?>">
-                                                <input type="hidden" name="pilot_operation" value="activate">
-                                                <button class="bg-green-700 hover:bg-green-600 text-white font-bold px-4 py-2 rounded">Ativar</button>
-                                            </form>
+                                            <button type="button"
+                                                data-pilot-id="<?= (int) ($pilot['id'] ?? 0) ?>"
+                                                data-pilot-name="<?= htmlspecialchars((string) ($pilot['name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                                data-pilot-nickname="<?= htmlspecialchars((string) ($pilot['nicknameTGC'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                                data-pilot-phone="<?= htmlspecialchars((string) ($pilot['phoneNumberID'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                                data-pilot-email="<?= htmlspecialchars((string) ($pilot['email'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                                onclick="openAdminPilotEditor(this)"
+                                                class="bg-green-700 hover:bg-green-600 text-white font-bold px-4 py-2 rounded">Revisar / editar</button>
                                         </div>
                                     <?php endforeach; ?>
                                 </div>
@@ -2329,6 +2405,35 @@ $pilotsToDeactivate = array_values(array_filter($allPilots, function ($pilot) { 
                             <?php endif; ?>
                         </section>
                     </div>
+                </div>
+            </div>
+            <div id="adminPilotEditPopup" class="popup" role="dialog" aria-modal="true" aria-labelledby="adminPilotEditTitle">
+                <div class="popup-content text-left">
+                    <button type="button" class="close-popup" aria-label="Fechar" onclick="closePopup('adminPilotEditPopup')">&times;</button>
+                    <h3 id="adminPilotEditTitle" class="text-2xl font-bold mb-3">Revisar cadastro pendente</h3>
+                    <p class="text-gray-300 mb-4">Revise e corrija os dados. Você pode salvar mantendo pendente ou salvar e ativar, o que gera e envia o primeiro PIN para o e-mail abaixo.</p>
+                    <form method="POST" class="space-y-3">
+                        <input type="hidden" name="action" value="admin_manage_pilot">
+                        <input type="hidden" name="admin_csrf" value="<?= htmlspecialchars($adminCsrf, ENT_QUOTES, 'UTF-8') ?>">
+                        <input type="hidden" id="adminPilotEditId" name="pilot_id">
+                        <label class="block text-sm">Nome real
+                            <input id="adminPilotEditName" name="name" type="text" required maxlength="120" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-4 py-2">
+                        </label>
+                        <label class="block text-sm">Nickname TGC
+                            <input id="adminPilotEditNickname" name="nicknameTGC" type="text" required maxlength="60" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-4 py-2">
+                        </label>
+                        <label class="block text-sm">Telefone com DDI
+                            <input id="adminPilotEditPhone" name="phoneNumberID" type="tel" required inputmode="numeric" pattern="[0-9]{8,15}" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-4 py-2">
+                        </label>
+                        <label class="block text-sm">E-mail para receber o PIN
+                            <input id="adminPilotEditEmail" name="email" type="email" required maxlength="254" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-4 py-2">
+                        </label>
+                        <div class="flex flex-wrap gap-3 pt-2">
+                            <button type="submit" name="pilot_operation" value="edit_pending" class="bg-blue-700 hover:bg-blue-600 text-white font-bold px-4 py-2 rounded">Salvar mantendo pendente</button>
+                            <button type="submit" name="pilot_operation" value="edit_and_activate" class="bg-green-700 hover:bg-green-600 text-white font-bold px-4 py-2 rounded">Salvar e ativar</button>
+                            <button type="button" onclick="closePopup('adminPilotEditPopup')" class="text-gray-300 px-4">Cancelar</button>
+                        </div>
+                    </form>
                 </div>
             </div>
             <?php endif; ?>
@@ -2485,6 +2590,15 @@ $pilotsToDeactivate = array_values(array_filter($allPilots, function ($pilot) { 
 
     function closePopup(id) { document.getElementById(id).style.display = 'none'; }
     function openRegistrationPopup() { document.getElementById('registrationPopup').style.display = 'block'; }
+    function openAdminPilotEditor(button) {
+        document.getElementById('adminPilotEditId').value = button.dataset.pilotId;
+        document.getElementById('adminPilotEditName').value = button.dataset.pilotName;
+        document.getElementById('adminPilotEditNickname').value = button.dataset.pilotNickname;
+        document.getElementById('adminPilotEditPhone').value = button.dataset.pilotPhone;
+        document.getElementById('adminPilotEditEmail').value = button.dataset.pilotEmail;
+        document.getElementById('adminPilotEditPopup').style.display = 'block';
+        document.getElementById('adminPilotEditName').focus();
+    }
 
     <?php if ($roundDeadline): ?>
     function updateCountdown() {
