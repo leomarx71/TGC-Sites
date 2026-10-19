@@ -964,7 +964,14 @@ class AdminPanel {
         if (empty($rounds)) return null;
 
         usort($rounds, function($a, $b) { return $b['round_number'] - $a['round_number']; });
-        return $rounds[0];
+        $currentRound = $rounds[0];
+        $deadline = isset($currentRound['deadline']) ? strtotime($currentRound['deadline']) : false;
+        if (($currentRound['status'] ?? 'open') !== 'closed' && $deadline !== false && $deadline <= time()) {
+            if ($this->finalizeRound($currentRound['round_number'], $year)) {
+                $currentRound['status'] = 'closed';
+            }
+        }
+        return $currentRound;
     }
 
     private function loadAllTracks() {
@@ -1051,6 +1058,21 @@ if (isset($_POST['change_year'])) {
     exit;
 }
 $selectedYear = $_SESSION['selected_year'] ?? 2026;
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['api_action'] ?? '') === 'expire_round') {
+    header('Content-Type: application/json');
+    try {
+        $currentRound = $admin->getCurrentRound($selectedYear);
+        echo json_encode([
+            'success' => true,
+            'status' => $currentRound['status'] ?? 'open'
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
+    exit;
+}
 
 // Restore flash messages
 $message = $_SESSION['flash_msg'] ?? '';
@@ -2601,6 +2623,7 @@ $pilotsToDeactivate = array_values(array_filter($allPilots, function ($pilot) { 
     }
 
     <?php if ($roundDeadline): ?>
+    let expirationRequestSent = false;
     function updateCountdown() {
         const deadline = new Date('<?= $roundDeadline ?>').getTime();
         const now = new Date().getTime();
@@ -2608,8 +2631,30 @@ $pilotsToDeactivate = array_values(array_filter($allPilots, function ($pilot) { 
         const el = document.getElementById('countdown');
         if (!el) return;
 
-        if (distance < 0) {
+        if (distance <= 0) {
             el.innerHTML = "🏁 PRAZO ENCERRADO 🏁";
+            if (!expirationRequestSent) {
+                expirationRequestSent = true;
+                fetch(window.location.pathname, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({ api_action: 'expire_round' }).toString()
+                })
+                    .then(response => {
+                        if (!response.ok) throw new Error('Não foi possível atualizar o status da rodada.');
+                        return response.json();
+                    })
+                    .then(result => {
+                        if (!result.success || result.status !== 'closed') {
+                            throw new Error(result.error || 'A rodada ainda não foi fechada pelo servidor.');
+                        }
+                        window.location.reload();
+                    })
+                    .catch(error => {
+                        console.error(error);
+                        el.innerHTML += "<br><span class='text-sm text-red-400'>Atualize a página para confirmar o encerramento da rodada.</span>";
+                    });
+            }
             return;
         }
         const d = Math.floor(distance / (1000 * 60 * 60 * 24));
